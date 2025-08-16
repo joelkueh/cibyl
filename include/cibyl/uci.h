@@ -44,9 +44,14 @@ typedef enum {
  * @breif Defines a UCI chess engine.
  */
 typedef struct {
-    engine_t eng;   /**< The engine itself. */
-    bool debug;     /**< Whether or not the engine is in debug mode. */
-    thrd_t mgr;     /**< The file descriptor on which engine messages will be returned. */
+    engine_t eng;       /**< The engine itself. */
+    bool debug;         /**< Whether or not the engine is in debug mode. */
+    go_params_t go_p;   /**< The parameters for the current 'go' serach. */
+
+    struct event_base *ev_base;     /**< The event base for the UCI engine. */
+    struct event *ev_timeout;       /**< Engine timeout event. */
+    struct event *ev_done;          /**< Engine done event. */
+    struct event *ev_usr_msg;       /**< User message event. */
 } uci_engine_t;
 
 /**
@@ -56,14 +61,5 @@ typedef struct {
  */
 int uci_init(uci_engine_t *engine);
 
-/**
- * @brief Main loop for the UCI chess engine.
- *
- * Handles commands from STDIN and messages from the engine itself.
- *
- * @param engine The engine to process.
- * @return 0 on success and -1 on error.
- */
-int uci_process(uci_engine_t *engine);
-
 #endif /* CIBYL_UCI_H */
+

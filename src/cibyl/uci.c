@@ -2,10 +2,14 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "event2/event.h"
 #include "cibyl.h"
 #include "uci.h"
+#include "logging.h"
+
+#define USR_MSG_BUFFER 512
 
 /* Command strings for matching. */
 const char STR_UCI[] = "uci";
@@ -29,35 +33,35 @@ const char ENGINE_AUTHOR[] = "Joel Kuehne";
 
 uci_engine_t engine;
 
-kh_errno_t handle_position(char *opts)
+int handle_position(char *opts)
 {
     return eng_set_ucifen(&engine.eng, opts);
 }
 
-kh_errno_t handle_searchmoves(char *moves)
+int handle_searchmoves(char *moves)
 {
     /* TODO: Implement me. */
-    return KH_EABORT;
+    return -1;
 }
 
-kh_errno_t parse_i64(char *token, int64_t *out)
+int parse_i64(char *token, int64_t *out)
 {
     char *endp;
 
     if (token == NULL && *token == '\0') {
-        kh_write_log("parse_i64: valid string expected\n");
-        return KH_EABORT;
+        cibyl_write_log("parse_i64: valid string expected\n");
+        return -1;
     }
     *out = strtoll(token, &endp, 10);
     if (*endp != '\0') {
-        kh_write_log("parse_i64: token is not an integer\n");
-        return KH_EABORT;
+        cibyl_write_log("parse_i64: token is not an integer\n");
+        return -1;
     }
     
-    return KH_EOK;
+    return 0;
 }
 
-kh_errno_t handle_go(char *opts)
+int handle_go(char *opts)
 {
     typedef enum {
         GO_SEARCHMOVES,
@@ -87,7 +91,7 @@ kh_errno_t handle_go(char *opts)
     const char STR_GO_MOVETIME[] = "movetime";
     const char STR_GO_INFINITE[] = "infinite";
 
-    go_param_t go_params;
+    go_params_t go_params;
     char *token;
     char *endp;
     
@@ -163,9 +167,9 @@ void hanlde_display()
 
 }
 
-kh_errno_t handle_cmd(char *cmd)
+int handle_cmd(char *cmd)
 {
-    kh_errno_t result = KH_EOK;
+    int result = 0;
 
     char *token = strtok(cmd, " \t\n");
     char *opts;
@@ -180,9 +184,6 @@ kh_errno_t handle_cmd(char *cmd)
             printf("id name %s\n", ENGINE_NAME);
             printf("id author %s\n", ENGINE_AUTHOR);
             printf("uciok\n");
-
-            /* Begin asynchronous initialization. */
-            eng_begin_init(&engine.eng);
         } else if (strcmp(cmd, STR_DEBUG) == 0) {
             engine.debug = true;
         } else if (strcmp(cmd, STR_ISREADY) == 0) {
@@ -229,13 +230,95 @@ kh_errno_t handle_cmd(char *cmd)
     return result;
 }
 
-kh_errno_t uci_init(uci_engine_t *engine)
+void uci_eng_done_cb(evutil_socket_t sock, short flags, void *eng_addr)
 {
-    /* TODO: Implement me. */
+    char best_mv_str[6];
+    char ponder_mv_str[6];
+    uci_engine_t *ueng = (uci_engine_t *)eng_addr;
+
+    /* Clear the timeout event. */
+    event_del(ueng->ev_timeout);
+
+    /* Send a message to the user. */
+    cb_mv_to_uci_algbr(best_mv_str, ueng->eng.best_mv);
+    cb_mv_to_uci_algbr(ponder_mv_str, ueng->eng.ponder_mv);
+    printf("bestmove %s ponder %s\n", best_mv_str, ponder_mv_str);
 }
 
-kh_errno_t uci_process(uci_engine_t *engine)
+/* This event could possibly be omitted, might be fine enough
+ * to do a timeout on ev_done and just take whatever is computed
+ * in the transposition table. */
+void uci_eng_timeout_cb(evutil_socket_t sock, short flags, void *eng_addr)
 {
-    /* TODO: Implement me. */
+    uci_engine_t *ueng = (uci_engine_t *)eng_addr;
+    eng_notify_stop(&ueng->eng);
+}
+
+void uci_usr_msg_cb(evutil_socket_t sock, short flags, void *eng_addr)
+{
+    char *uci_msg_buf = NULL;
+    size_t bufsize;
+    int result = 0;
+
+    uci_engine_t *ueng = (uci_engine_t *)eng_addr;
+    if (getline(&uci_msg_buf, &bufsize, stdin) == -1) {
+        cibyl_perror("getline: ", errno);
+        goto free_buf;
+    }
+
+    if (handle_cmd(uci_msg_buf) != 0) {
+        cibyl_write_log("handle_cmd failed");
+        goto free_buf;
+    }
+
+free_buf:
+    free(uci_msg_buf);
+}
+
+int uci_main(uci_engine_t *ueng)
+{
+    int result = 0;
+
+    /* Initialize events. */
+    ueng->ev_base = event_base_new();
+    ueng->ev_done = event_new(ueng->ev_base, -1, 0, uci_eng_done_cb, (void *)ueng);
+    ueng->ev_timeout = evtimer_new(ueng->ev_base, uci_eng_timeout_cb, (void *)ueng);
+    ueng->ev_usr_msg = event_new(ueng->ev_base, STDIN_FILENO,
+                                 EV_READ, uci_usr_msg_cb, (void *)ueng);
+
+    /* Add events. */
+    if (event_add(ueng->ev_done, NULL)) {
+        cibyl_write_log("event_add: failed to add event ev_done");
+        result = -1;
+        goto free_events;
+    }
+    if (event_add(ueng->ev_usr_msg, NULL)) {
+        cibyl_write_log("event_add: failed to add event ev_usr_msg");
+        result = -1;
+        goto free_events;
+    }
+
+    /* Begin chessboard initialization. */
+    /* NOTE: Why doesn't this function return an error struct? */
+    if (eng_init(&engine.eng, ueng->ev_done)) {
+        cibyl_write_log("eng_init: failed");
+        result = -1;
+        goto free_events;
+    }
+
+    /* Enter event loop. */
+    if (event_base_dispatch(ueng->ev_base)) {
+        cibyl_write_log("event_base_dispatch: failed to enter event loop");
+        result = -1;
+        goto free_events;
+    }
+
+free_events:
+    event_free(ueng->ev_done);
+    event_free(ueng->ev_timeout);
+    event_free(ueng->ev_usr_msg);
+    event_base_free(ueng->ev_base);
+
+    return result;
 }
 

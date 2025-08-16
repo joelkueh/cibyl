@@ -28,6 +28,8 @@
  * @param eng A printf compliant format string.
  * @param fmt A printf compliant format string.
  * @param ... All remaining arguments passed into the format string.
+ *
+ * @return This funciton does not reaturn.
  */
 void thinker_unlock_write_err(engine_t *eng, char *fmt, ...)
 {
@@ -49,6 +51,8 @@ void thinker_unlock_write_err(engine_t *eng, char *fmt, ...)
  * @param eng The engine that the thinker belongs to.
  * @param fmt A printf compliant format string.
  * @param ... All remaining arguments passed into the format string.
+ *
+ * @return This funciton does not reaturn.
  */
 void thinker_write_err(engine_t *eng, char *fmt, ...)
 {
@@ -109,8 +113,8 @@ void *thinker_entry(void *eng_addr)
 
         /* Synchonize on the condition and wait for a signal from the manager thread. */
         eng->waiting_threads++;
-        while (!eng->go_ready || atomic_load(&eng->exit_flag)) {
-            if ((result = pthread_cond_wait(&eng->sync_cnd, &eng->sync_mtx)) != 0)
+        while (!eng->go_rdy || atomic_load(&eng->exit_flag)) {
+            if ((result = pthread_cond_wait(&eng->cnd_go_rdy, &eng->sync_mtx)) != 0)
                 thinker_perror(eng, "thinker: pthread_cond_wait", result);
         }
         eng->waiting_threads--;
@@ -127,23 +131,52 @@ void *thinker_entry(void *eng_addr)
         board = eng->board;
 
         /* Start searching. */
-        alphabeta(&board, eng->go_params.depth);
+        alphabeta(&board, eng->srch_params.depth);
     }
 
     return (void *)KH_EOK;
 }
 
-void eng_done_cb(evutil_socket_t sock, short flags, void *eng)
+int eng_notify_go(engine_t *eng, const go_params_t *opts)
 {
+    int result;
+    int retval;
 
+    /* Aquire the lock on the engine. */
+    if ((result = pthread_mutex_lock(&eng->sync_mtx)) != 0) {
+        cibyl_perror("handler: pthread_mutex_lock", result);
+        retval = result;
+        goto out;
+    }
+
+    /* Wait for all thinkers to be ready. */
+    while (!eng->go_rdy || atomic_load(&eng->exit_flag)) {
+        if ((result = pthread_cond_wait(&eng->cnd_thrds_rdy, &eng->sync_mtx)) != 0) {
+            cibyl_perror("handler: pthread_cond_wait", result);
+            retval = result;
+            goto out_release_lock;
+        }
+    }
+
+    /* Broadcast search request to all thinkers. */
+    eng->srch_params = *opts;
+    eng->go_rdy = true;
+    if ((result = pthread_cond_broadcast(&eng->cnd_go_rdy)) != 0) {
+        cibyl_perror("handler: pthread_cond_broadcast", result);
+        retval = result;
+    }
+
+out_release_lock:
+    if ((result = pthread_mutex_unlock(&eng->sync_mtx)) != 0) {
+        cibyl_perror("handler: pthread_mutex_unlock", result);
+        retval = retval ? retval : result;
+    }
+
+out:
+    return retval;
 }
 
-void eng_timeout_cb(evutil_socket_t sock, short flags, void *eng)
-{
-
-}
-
-int eng_begin_init(struct event_base *base, engine_t *eng)
+int eng_init(engine_t *eng, struct event *ev_done)
 {
     int64_t result;
     int64_t retval = 0;
@@ -164,8 +197,7 @@ int eng_begin_init(struct event_base *base, engine_t *eng)
     }
 
     /* Create the different events used by the engine. */
-    eng->ev_done = event_new(base, -1, 0, eng_done_cb, eng);
-    eng->ev_timeout = event_new(base, -1, EV_TIMEOUT, eng_timeout_cb, eng);
+    eng->ev_done = ev_done;
     goto out;
 
 err_close_thrds:
