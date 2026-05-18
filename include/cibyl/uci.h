@@ -2,7 +2,7 @@
 #ifndef CIBYL_UCI_H
 #define CIBYL_UCI_H
 
-#include <threads.h>
+#include <pthread.h>
 #include "engine.h"
 
 /**
@@ -44,26 +44,32 @@ typedef enum {
  * @breif Defines a UCI chess engine.
  */
 typedef struct {
-    engine_t eng;   /**< The engine itself. */
-    bool debug;     /**< Whether or not the engine is in debug mode. */
-    thrd_t mgr;     /**< The file descriptor on which engine messages will be returned. */
+    engine_t eng;    /**< The engine itself. */
+    bool debug;      /**< Whether or not the engine is in debug mode. */
+#ifdef _WIN32
+#else
+    int panic_fd[2]; /**< File descriptor for engine panic. */
+#endif
 } uci_engine_t;
 
 /**
- * @breif Initializes a UCI chess engine. Performs absolute minimum work.
+ * @breif Initializes a UCI chess engine.
  * @param engine The engine to initialize.
+ * @param nthreads The number of threads to initialize.
  * @return An error code for any failed system calls.
  */
-cibyl_errno_t uci_init(uci_engine_t *engine);
+cibyl_errno_t uci_init(uci_engine_t *eng, uint32_t nthreads);
 
 /**
- * @brief Main loop for the UCI chess engine.
- *
- * Handles commands from STDIN and messages from the engine itself.
- *
+ * @brief Main loop for the UCI chess engine. Forwards UCI commands to the engine.
  * @param engine The engine to process.
  * @return An error code for any failed system calls.
  */
-cibyl_errno_t uci_process(uci_engine_t *engine);
+cibyl_errno_t uci_process(uci_engine_t *eng);
+
+/**
+ * @brief Performs cleanup on an instance of a UCI chess engine.
+ */
+void uci_deinit(uci_engine_t *eng);
 
 #endif /* CIBYL_UCI_H */

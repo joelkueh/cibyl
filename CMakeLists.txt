@@ -18,10 +18,11 @@ add_library(cblib
 	src/cblib/cb_gen.c
 	src/cblib/cb_lib.c
 	src/cblib/cb_const.c
-        src/cblib/cb_dbg.c
+  src/cblib/cb_dbg.c
 )
 target_include_directories(cblib
 	PRIVATE
+		${PROJECT_SOURCE_DIR}/include
 		${PROJECT_SOURCE_DIR}/include/cblib
 		${PROJECT_SOURCE_DIR}/include/utils
 )
@@ -33,6 +34,7 @@ add_executable(debug
 )
 target_include_directories(debug
 	PRIVATE
+		${PROJECT_SOURCE_DIR}/include
 		${PROJECT_SOURCE_DIR}/include/cblib
 		${PROJECT_SOURCE_DIR}/include/debug
 		${PROJECT_SOURCE_DIR}/include/utils
@@ -44,9 +46,12 @@ target_link_libraries(debug
 # Create the engine executable.
 add_executable(cibyl
 	src/cibyl/cibyl.c
+	src/cibyl/uci.c
+	src/cibyl/engine.c
 )
 target_include_directories(cibyl
 	PRIVATE
+		${PROJECT_SOURCE_DIR}/include
 		${PROJECT_SOURCE_DIR}/include/cibyl
 		${PROJECT_SOURCE_DIR}/include/cblib
 )
@@ -57,6 +62,7 @@ add_executable(kcsrv
 )
 target_include_directories(kcsrv
 	PRIVATE
+		${PROJECT_SOURCE_DIR}/include
 		${PROJECT_SOURCE_DIR}/include/kcsrv
 )
 
@@ -66,5 +72,6 @@ add_executable(khess
 )
 target_include_directories(khess
 	PRIVATE
+		${PROJECT_SOURCE_DIR}/include
 		${PROJECT_SOURCE_DIR}/include/khess
 )

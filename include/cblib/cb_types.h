@@ -181,6 +181,5 @@ static cb_errno_t cb_mkerr(cb_error_t *err, cb_errno_t cb_errno, char *format, .
     return cb_errno;
 }
 
-
 #endif /* CB_TYPES_H */
 

@@ -2,16 +2,21 @@
 #ifndef CYBIL_ENGINE_H
 #define CYBIL_ENGINE_H
 
-#include <threads.h>
+#include <pthread.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 
 #ifdef _WIN32
-#incllude <namedpipeapi.h>
+#include <namedpipeapi.h>
 #endif
 
 #include "cb_move.h"
 #include "cibyl.h"
+
+#define COMMAND_QUEUE_SIZE 32
+
+/* Forward declaration of the engine struct. */
+typedef struct engine engine_t;
 
 /**
  * @breif Transposition table that contains precalculated positions.
@@ -19,6 +24,17 @@
 typedef struct {
 
 } ttable_t;
+
+/**
+ * @breif Defines struct for a thread that thinks.
+ */
+typedef struct {
+    cb_board_t *root;       /**< The root position to think on. */
+    ttable_t *ttable;       /**< The transposition table to add thoughts to. */
+    engine_t *eng;          /**< The engine that the thinker belongs to. */
+    pthread_t thread;       /**< The thread that backs this thinker. */
+    int tid;                /**< ID of the thinker thread. */
+} thinker_t;
 
 /**
  * @breif A bag of parameters for an engine search.
@@ -39,36 +55,54 @@ typedef struct {
     bool ready;             /**< Flag that states if the search is ready. */
 } go_param_t;
 
-/**
- * @breif Defines struct for a thread that thinks. */
-typedef struct {
-    cb_board_t *root;       /**< The root position to think on. */
-    ttable_t *ttable;       /**< The transposition table to add thoughts to. */
-    thrd_t thread;          /**< The thread itself. */
-} thinker_t;
+/* Types for the command queue. */
+typedef enum {
+    ENG_STOP = 0,
+    ENG_GO,
+    ENG_NTHREAD,
+} engine_command_type_t;
+
+typedef struct engine_command engine_command_t;
+struct engine_command {
+    engine_command_t *prev;
+    engine_command_t *next;
+    engine_command_type_t type;
+    union {
+        go_param_t params;
+        int nthreads;
+    };
+};
 
 /**
- * @breif Defines a pool of threads that funcitons as an engine.
+ * @breif Defines a Lazy SMP pool of threads that funcitons as an engine.
  */
-typedef struct {
+struct engine {
+    /* Fields for managing the board state. */
     cb_board_t board;       /**< The current position. */
     ttable_t ttable;        /**< The transposition tables. */
-    thinker_t *thinkers;    /**< The pool of thinkers. */
-    thrd_t mgr;             /**< The manager thread. */
     go_param_t go_params;   /**< The parameters for any active search. */
 
-    cnd_t sync_cnd;         /**< A condition variable that handles thinker sync. */
-    mtx_t sync_mtx;         /**< A mutex that handles thinker sync. */
-    int rdy_thrds;          /**< Holds the number of threads that are ready to run. */
+    /* Synchronization primitives for the thread pool. */
+    int nthinkers;          /**< The number of thinkers in the engine. */
+    thinker_t manager;      /**< Backing data for the manager. */
+    pthread_barrier_t init; /**< Initialization barrier. */
+    pthread_barrier_t start;/**< Barrier for start of a search. */
+    pthread_barrier_t end;  /**< Barrier for completion of a search. */
+    atomic_bool stop_flag;  /**< Checked by the thinkers to see if they should stop search. */
     atomic_bool exit_flag;  /**< Checked by the thinkers to see if they should shut down. */
+    
+    /* Function pointers for data reporting. */
+    void *udata;                        /**< User data for report handlers. */
+    int (*report_error)(engine_t *eng); /**< Engine panic report function. */
+    int (*report_best)(engine_t *eng);  /**< Engine bestmove report function. */
+    int (*report_info)(engine_t *eng);  /**< Engine info report function. */
 
-#ifdef _WIN32
-    PHANDLE h_msg_read;     /**< The read handle for the pipe on windows. */
-    PHANDLE h_msg_write;    /**< THe write handle for the pipe on windows. */
-#else
-    int msg_pipe[2];        /**< A message pipe for result output. */
-#endif
-} engine_t;
+    /* Linked-list command queue structure. */
+    pthread_mutex_t queue_lock;   /**< Lock on the command queue. */
+    pthread_cond_t queue_items;   /**< Condition to wait for items in the command queue. */
+    engine_command_t *queue_head; /**< Head of the queue. */
+    engine_command_t *queue_tail; /**< Tail of the queue. */
+};
 
 /**
  * @breif Clears a go_params struct.
@@ -91,23 +125,44 @@ static void clear_go_params(go_param_t *params) {
 
 /**
  * @brief Begins initializing the engine.
- * @param engine The engine to initialize.
+ * @param eng The engine to initialize.
  * @return An error code for any failed threading calls.
  */
 cibyl_errno_t eng_begin_init(engine_t *eng);
 
 /**
- * @breif Waits for engine initialization to be completed.
- * @param engine The engine that was to be initialized.
+ * @brief Blocks the calling thread until the engine is ready.
+ * @param eng The engine to initialize.
+ * @param report_fn The report function to register.
  */
-cibyl_errno_t eng_await_isready(engine_t *eng);
+void eng_await_ready(engine_t *eng);
+
+/**
+ * @brief Registers an error reporting function for the engine.
+ * @param eng The engine to update.
+ * @param report_fn The report function to register.
+ */
+void eng_register_error(engine_t *eng, int (*report_fn)(engine_t *eng));
+
+/**
+ * @brief Registers a bestmove reporting function for the engine.
+ * @param eng The engine to update.
+ * @param report_fn The report function to register.
+ */
+void eng_register_best(engine_t *eng, int (*report_fn)(engine_t *eng));
+
+/**
+ * @brief Registers an info reporting function for the engine.
+ * @param eng The engine to update.
+ * @param report_fn The report function to register.
+ */
+void eng_register_info(engine_t *eng, int (*report_fn)(engine_t *eng));
 
 /**
  * @breif Nicely frees all allocated memory and terminates threads.
  * @param engine The engine to cleanup.
- * @return An error code for any failed threading calls.
  */
-cibyl_errno_t eng_cleanup(engine_t *eng);
+void eng_cleanup(engine_t *eng);
 
 /**
  * @breif Tells the engine that it is now playing a new game.

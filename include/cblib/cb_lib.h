@@ -15,10 +15,6 @@ cb_errno_t cb_board_init(cb_error_t *err, cb_board_t *board);
 
 /**
  * @breif Initializes the move generation tables for a board.
- *
- * This function is thread safe and can be called multiple times during initialization.
- * Only one thread that calls this function will win the 
- *
  * @param err A pointer that will be populated with any errors.
  * @return True if this thread initialized the table, false otherwise.
  */

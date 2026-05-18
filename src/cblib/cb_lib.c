@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <threads.h>
+#include <stdatomic.h>
 
 #include "cb_lib.h"
 #include "cb_tables.h"
@@ -10,6 +11,8 @@
 #include "cb_move.h"
 #include "cb_board.h"
 #include "cb_history.h"
+
+int cb_table_refcount = 0;
 
 void cb_mv_to_uci_algbr(char *buf, cb_move_t move)
 {

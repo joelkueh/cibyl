@@ -4,21 +4,24 @@
 #include "uci.h"
 
 #include <threads.h>
+#include <unistd.h>
+
+#define OPTIONAL_ARGS \
+    OPTIONAL_INT_ARG(threads, -1, "-j", "threads", "Number of threads to use")
+#define BOOLEAN_ARGS \
+    BOOLEAN_ARG(help, "-h", "Show help")
+#include "easy_args.h"
 
 FILE *log_file;
 mtx_t log_mtx;
 
 void cibyl_vwrite_log(char *format, va_list args)
 {
-    /* Make sure the log file exists attempt to lock the mutex.
-     * If there is an error locking the mutex, something is horribly wrong. */
     if (log_file == NULL)
         return;
-    mtx_lock(&log_mtx);
-
+    if (mtx_lock(&log_mtx))
+        return;
     vfprintf(log_file, format, args);
-
-    /* Unlock the mutex. */
     mtx_unlock(&log_mtx);
 }
 
@@ -30,7 +33,42 @@ void cibyl_write_log(char *format, ...)
     va_end(args);
 }
 
-int main()
+int main(int argc, char *argv[])
 {
-    return 0;
+    int result = 0;
+    uci_engine_t eng;
+    args_t args = make_default_args();
+    if (!parse_args(argc, argv, &args) || args.help) {
+        print_help(argv[0]);
+        result = 1;
+        goto out;
+    }
+
+    /* Detect optimal thread count on linux if no count provided. */
+    if (args.threads == -1) {
+#ifdef __linux__
+        args.threads = sysconf(_SC_NPROCESSORS_ONLN);
+#else
+        args.threads = 1;
+#endif
+    }
+
+    /* Initialize the engine. */
+    if (uci_init(&eng, args.threads)) {
+        result = 1;
+        goto out;
+    };
+
+    /* Initialize the engine and begin processing messages. */
+    while (true) {
+        if (uci_process(&eng)) {
+            result = 1;
+            goto out_uci_cleanup;
+        }
+    }
+
+out_uci_cleanup:
+    uci_deinit(&eng);
+out:
+    return result;
 }
