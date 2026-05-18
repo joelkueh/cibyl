@@ -20,6 +20,7 @@ const char STR_GO[] = "go";
 const char STR_STOP[] = "stop";
 const char STR_PONDERHIT[] = "ponderhit";
 const char STR_QUIT[] = "quit";
+const char STR_UCI_DELIMS[] = " \t";
 
 /* Non-uci command strings. */
 const char STR_DISPLAY[] = "d";
@@ -118,11 +119,11 @@ cibyl_errno_t handle_go(uci_engine_t *eng, char *opts)
     }
 
     /* Loop through all of the arguments to the go command. */
-    token = strtok(opts, " ");
+    token = strtok(opts, STR_UCI_DELIMS);
     while (token != NULL) {
         /* Handle searchmoves, this will consume all remaining arguments. */
         if (strcmp(token, STR_GO_SEARCHMOVES) == 0) {
-            handle_searchmoves(strtok(opts, " "));
+            handle_searchmoves(strtok(opts, STR_UCI_DELIMS));
             break;
         }
 
@@ -135,39 +136,39 @@ cibyl_errno_t handle_go(uci_engine_t *eng, char *opts)
 
         /* Handle time information. */
         else if (strcmp(token, STR_GO_WTIME) == 0) {
-            if (parse_i64(strtok(opts, " "), &go_params.wtime) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.wtime) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_BTIME) == 0) {
-            if (parse_i64(strtok(opts, " "), &go_params.btime) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.btime) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_WINC) == 0) {
-            if (parse_i64(strtok(opts, " "), &go_params.winc) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.winc) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_BINC) == 0) {
-            if (parse_i64(strtok(opts, " "), &go_params.binc) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.binc) < 0)
                 return CIBYL_EABORT;
         }
 
         /* Handle move stopping. */
         else if (strcmp(token, STR_GO_MOVESTOGO) == 0) {
-            if (parse_i64(strtok(opts, " "), &go_params.movestogo) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.movestogo) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_DEPTH) == 0) {
-            if (parse_i64(strtok(opts, " "), &go_params.depth) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.depth) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_NODES) == 0) {
-            if (parse_i64(strtok(opts, " "), &go_params.nodes) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.nodes) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_MATE) == 0) {
-            if (parse_i64(strtok(opts, " "), &go_params.mate) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.mate) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_MOVETIME) == 0) {
-            if (parse_i64(strtok(opts, " "), &go_params.movetime) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.movetime) < 0)
                 return CIBYL_EABORT;
         }
 
         /* Grab the next token. */
-        token = strtok(NULL, " ");
+        token = strtok(NULL, STR_UCI_DELIMS);
     }
 
     /* Start thinking. */

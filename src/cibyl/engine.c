@@ -15,6 +15,28 @@
 #include "engine.h"
 
 /**
+ * @brief Initializes the queue for the provided engine.
+ * @param eng The engine queue to initialize.
+ */
+void queue_init(engine_t *eng)
+{
+    pthread_mutex_init(&eng->queue_lock, NULL);
+    pthread_cond_init(&eng->queue_items, NULL);
+    eng->queue_head = NULL;
+    eng->queue_tail = NULL;
+}
+
+/**
+ * @brief Deinitializes the command queue.
+ * @param eng The engine with the queue to deinitialize.
+ */
+void queue_deinit(engine_t *eng)
+{
+    pthread_mutex_destroy(&eng->queue_lock);
+    pthread_cond_destroy(&eng->queue_items);
+}
+
+/**
  * @brief Pushes a command to the command queue. Queue takes ownership of the command.
  * @param eng The engine to push the command to.
  * @param command The command to push. Will become owned by the queue.
@@ -225,6 +247,9 @@ cibyl_errno_t eng_begin_init(engine_t *eng_addr)
     int presult;
     int i;
 
+    /* Create the message queue that handles synchronization with uci and manager. */
+    queue_init(eng);
+
     /* Spawn the manager of the thinker pool. Manager will spawn remaining threads. */
     eng->manager.root = &eng->board;
     eng->manager.ttable = &eng->ttable;
@@ -242,6 +267,7 @@ void eng_cleanup(engine_t *eng)
 {
     int i;
     pthread_join(eng->manager.thread, NULL);
+    queue_deinit(eng);
     cb_tables_free();
     cb_board_free(&eng->board);
 }
