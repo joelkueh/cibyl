@@ -44,11 +44,12 @@ typedef enum {
  * @breif Defines a UCI chess engine.
  */
 typedef struct {
-    engine_t eng;    /**< The engine itself. */
-    bool debug;      /**< Whether or not the engine is in debug mode. */
+    engine_t eng;      /**< The engine itself. */
+    bool debug;        /**< Whether or not the engine is in debug mode. */
+    bool initialized;  /**< Flag for whether or not the engin has been initialized. */
 #ifdef _WIN32
 #else
-    int panic_fd[2]; /**< File descriptor for engine panic. */
+    int error_pipe[2]; /**< Pipe for the thread pool to report errors on. */
 #endif
 } uci_engine_t;
 

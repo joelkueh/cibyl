@@ -248,7 +248,7 @@ cibyl_errno_t handle_cmd(uci_engine_t *eng, char *cmd)
     return result;
 }
 
-cibyl_errno_t uci_init(uci_engine_t *eng, uint32_t nthreads)
+cibyl_errno_t uci_init_slow(uci_engine_t *eng)
 {
     int result = CIBYL_EOK;
 
@@ -260,12 +260,15 @@ cibyl_errno_t uci_init(uci_engine_t *eng, uint32_t nthreads)
         goto out;
     }
 #else
-    if (pipe(eng->panic_fd) == -1) {
+    if (pipe(eng->error_pipe) == -1) {
         cibyl_write_log("pipe: %s\n", strerror(errno));
         result = CIBYL_EABORT;
         goto out;
     }
 #endif
+
+    /* Do not initialize the engine yet. */
+
 
     /* Initialize the underlying engine. */
     if (eng_begin_init(&eng->eng)) {
@@ -279,12 +282,16 @@ err_close_pipe:
     CloseHandle(eng->h_msg_read)):
     CloseHandle(eng->h_msg_write));
 #else
-    close(eng->msg_pipe[0]);
-    close(eng->msg_pipe[1]);
+    close(eng->error_pipe[0]);
+    close(eng->error_pipe[1]);
 #endif
 
 out:
     return result;
+}
+
+cibyl_errno_t uci_init(uci_engine_t *eng, uint32_t nthreads)
+{
 }
 
 cibyl_errno_t uci_process(uci_engine_t *eng)

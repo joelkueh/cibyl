@@ -22,7 +22,6 @@ typedef struct engine engine_t;
  * @breif Transposition table that contains precalculated positions.
  */
 typedef struct {
-
 } ttable_t;
 
 /**
@@ -55,24 +54,6 @@ typedef struct {
     bool ready;             /**< Flag that states if the search is ready. */
 } go_param_t;
 
-/* Types for the command queue. */
-typedef enum {
-    ENG_STOP = 0,
-    ENG_GO,
-    ENG_NTHREAD,
-} engine_command_type_t;
-
-typedef struct engine_command engine_command_t;
-struct engine_command {
-    engine_command_t *prev;
-    engine_command_t *next;
-    engine_command_type_t type;
-    union {
-        go_param_t params;
-        int nthreads;
-    };
-};
-
 /**
  * @breif Defines a Lazy SMP pool of threads that funcitons as an engine.
  */
@@ -96,12 +77,6 @@ struct engine {
     int (*report_error)(engine_t *eng); /**< Engine panic report function. */
     int (*report_best)(engine_t *eng);  /**< Engine bestmove report function. */
     int (*report_info)(engine_t *eng);  /**< Engine info report function. */
-
-    /* Linked-list command queue structure. */
-    pthread_mutex_t queue_lock;   /**< Lock on the command queue. */
-    pthread_cond_t queue_items;   /**< Condition to wait for items in the command queue. */
-    engine_command_t *queue_head; /**< Head of the queue. */
-    engine_command_t *queue_tail; /**< Tail of the queue. */
 };
 
 /**

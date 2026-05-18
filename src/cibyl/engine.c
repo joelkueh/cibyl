@@ -1,6 +1,5 @@
 
 #include <pthread.h>
-#include <semaphore.h>
 #ifdef _WIN32
 #define WIN_PIPE_SIZE 4096
 #include <io.h>
@@ -13,67 +12,6 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include "engine.h"
-
-/**
- * @brief Initializes the queue for the provided engine.
- * @param eng The engine queue to initialize.
- */
-void queue_init(engine_t *eng)
-{
-    pthread_mutex_init(&eng->queue_lock, NULL);
-    pthread_cond_init(&eng->queue_items, NULL);
-    eng->queue_head = NULL;
-    eng->queue_tail = NULL;
-}
-
-/**
- * @brief Deinitializes the command queue.
- * @param eng The engine with the queue to deinitialize.
- */
-void queue_deinit(engine_t *eng)
-{
-    pthread_mutex_destroy(&eng->queue_lock);
-    pthread_cond_destroy(&eng->queue_items);
-}
-
-/**
- * @brief Pushes a command to the command queue. Queue takes ownership of the command.
- * @param eng The engine to push the command to.
- * @param command The command to push. Will become owned by the queue.
- */
-void enqueue_command(engine_t *eng, engine_command_t *command)
-{
-    pthread_mutex_lock(&eng->queue_lock);
-    eng->queue_tail->prev = NULL;
-    eng->queue_tail->next = command;
-    command->next = NULL;
-    if (eng->queue_head == NULL)
-        eng->queue_head = command;
-    pthread_cond_signal(&eng->queue_items);
-    pthread_mutex_unlock(&eng->queue_lock);
-}
-
-/**
- * @brief Receive a command from the queue and take ownership of it.
- * @param eng The engine to dequeue the command from.
- * @return An owned pointer to a command that must be freed.
- */
-engine_command_t *dequeue_command(engine_t *eng)
-{
-    engine_command_t *command;
-    pthread_mutex_lock(&eng->queue_lock);
-    while (eng->queue_head == NULL) {
-        pthread_cond_wait(&eng->queue_items, &eng->queue_lock);
-    }
-    command = eng->queue_tail;
-    if (command->prev == NULL)
-        eng->queue_head = NULL;
-    eng->queue_tail = command->prev;
-    if (eng->queue_tail != NULL)
-        eng->queue_tail->next = NULL;
-    pthread_mutex_unlock(&eng->queue_lock);
-    return command;
-}
 
 /**
  * @breif Handles errors in a thinker thread.
@@ -97,6 +35,11 @@ void thinker_panic(engine_t *eng, char *format, ...)
     pthread_exit((void*)1);
 }
 
+void thinker_handle_go(thinker_t *tk)
+{
+
+}
+
 void *thinker_entry(void *thinker_args)
 {
     thinker_t *tk = (thinker_t *)thinker_args;
@@ -104,9 +47,18 @@ void *thinker_entry(void *thinker_args)
 
     /* Start thinking. */
     while (true) {
+        /* Sync all threads with the UI thread on the start barrier (N+1). */
         pthread_barrier_wait(&tk->eng->start);
-        // TODO: Think
+        if (atomic_load_explicit(&tk->eng->exit_flag, memory_order_relaxed) == true)
+            break;
+
+        /* Sync threads within the pool (N) on the end barrier after search. */
+        thinker_handle_go(tk);
         pthread_barrier_wait(&tk->eng->end);
+
+        /* The manager thread can send results back to the caller. */
+        if (tk->tid == 0 && tk->eng->report_best != NULL)
+            tk->eng->report_best(tk->eng);
     }
 
 out:
@@ -247,9 +199,6 @@ cibyl_errno_t eng_begin_init(engine_t *eng_addr)
     int presult;
     int i;
 
-    /* Create the message queue that handles synchronization with uci and manager. */
-    queue_init(eng);
-
     /* Spawn the manager of the thinker pool. Manager will spawn remaining threads. */
     eng->manager.root = &eng->board;
     eng->manager.ttable = &eng->ttable;
@@ -267,7 +216,6 @@ void eng_cleanup(engine_t *eng)
 {
     int i;
     pthread_join(eng->manager.thread, NULL);
-    queue_deinit(eng);
     cb_tables_free();
     cb_board_free(&eng->board);
 }
