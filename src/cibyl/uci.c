@@ -22,6 +22,20 @@ const char STR_PONDERHIT[] = "ponderhit";
 const char STR_QUIT[] = "quit";
 const char STR_UCI_DELIMS[] = " \t";
 
+/* Supported option strings. */
+const char STR_OPT_HASH[] = "Hash";
+const char DECL_OPT_HASH[] = "option name Hash type spin default 16 min 1 max 32768\n";
+const char STR_OPT_THREADS[] = "Threads";
+const char DECL_OPT_THREADS[] = "option name Threads type spin default 1 min 1 max 16\n";
+const char STR_OPT_CLEAR[] = "Clear Hash";
+const char DECL_OPT_CLEAR[] = "option name Clear Hash type button";
+
+/* Could suppor these later although it would be difficult. */
+// const char STR_OPT_MULITPV[] = "MultiPV";
+// const char STR_OPT_PONDER[] = "Ponder";
+// const char STR_OPT_SYZYGY_PATH[] = "SyzygyPath";
+// const char STR_OPT_SYZYGY_PROBE_DEPTH[] = "SyzygyProbeDepth";
+
 /* Non-uci command strings. */
 const char STR_DISPLAY[] = "d";
 const char STR_EVAL[] = "eval";
@@ -106,12 +120,12 @@ cibyl_errno_t handle_go(uci_engine_t *eng, char *opts)
     const char STR_GO_MOVETIME[] = "movetime";
     const char STR_GO_INFINITE[] = "infinite";
 
-    go_param_t go_params;
+    search_params_t search_params;
     char *token;
     char *endp;
     
     /* Clear go params. */
-    clear_go_params(&go_params);
+    clear_search_params(&search_params);
 
     /* Handle null input. */
     if (opts == NULL) {
@@ -129,41 +143,41 @@ cibyl_errno_t handle_go(uci_engine_t *eng, char *opts)
 
         /* Handle various flags. */
         else if (strcmp(token, STR_GO_PONDER) == 0) {
-            go_params.ponder = true;
+            search_params.ponder = true;
         } else if (strcmp(token, STR_GO_INFINITE) == 0) {
-            go_params.infinite = true;
+            search_params.infinite = true;
         }
 
         /* Handle time information. */
         else if (strcmp(token, STR_GO_WTIME) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.wtime) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.wtime) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_BTIME) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.btime) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.btime) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_WINC) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.winc) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.winc) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_BINC) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.binc) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.binc) < 0)
                 return CIBYL_EABORT;
         }
 
         /* Handle move stopping. */
         else if (strcmp(token, STR_GO_MOVESTOGO) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.movestogo) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.movestogo) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_DEPTH) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.depth) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.depth) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_NODES) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.nodes) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.nodes) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_MATE) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.mate) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.mate) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_MOVETIME) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &go_params.movetime) < 0)
+            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.movetime) < 0)
                 return CIBYL_EABORT;
         }
 
@@ -172,7 +186,7 @@ cibyl_errno_t handle_go(uci_engine_t *eng, char *opts)
     }
 
     /* Start thinking. */
-    eng_notify_go(&eng->eng, &go_params);
+    eng_start_search(&eng->eng, &search_params);
 
     return CIBYL_EOK;
 }
@@ -248,7 +262,7 @@ cibyl_errno_t handle_cmd(uci_engine_t *eng, char *cmd)
     return result;
 }
 
-cibyl_errno_t uci_init_slow(uci_engine_t *eng)
+cibyl_errno_t uci_init_engine(uci_engine_t *eng)
 {
     int result = CIBYL_EOK;
 
@@ -292,6 +306,11 @@ out:
 
 cibyl_errno_t uci_init(uci_engine_t *eng, uint32_t nthreads)
 {
+    /* Set the engine as uninitialized. */
+    eng->debug = false;
+    eng->initialized = false;
+
+    /* Register the handler functions for the different engine reports. */
 }
 
 cibyl_errno_t uci_process(uci_engine_t *eng)

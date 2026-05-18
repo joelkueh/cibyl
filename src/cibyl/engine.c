@@ -89,19 +89,6 @@ cibyl_errno_t manager_engine_init(engine_t *eng)
         goto err_cleanup_board;
     }
 
-    /* Initialize synchronization primitives. */
-    if ((presult = pthread_barrier_init(&eng->start, NULL, eng->nthinkers + 1)) != 0) {
-        cibyl_write_log("pthread_barrier_init: %s\n", strerror(presult));
-        result = CIBYL_EABORT;
-        goto err_cleanup_tables;
-    };
-
-    if ((presult = pthread_barrier_init(&eng->end, NULL, eng->nthinkers + 1)) != 0) {
-        cibyl_write_log("pthread_barrier_init: %s\n", strerror(presult));
-        result = CIBYL_EABORT;
-        goto err_destroy_start;
-    };
-
 err_destroy_start:
     pthread_barrier_destroy(&eng->start);
 err_cleanup_tables:
@@ -125,19 +112,6 @@ cibyl_errno_t manager_run_pool(thinker_t *tk)
         cibyl_write_log("malloc: %s\n", strerror(errno));
         result = CIBYL_EABORT;
         goto err;
-    }
-
-    /* Spawn the thinker threads. */
-    for (i = 0; i < tk->eng->nthinkers - 1; i++) {
-        tkrs[i].eng = tk->eng;
-        tkrs[i].root = tk->root;
-        tkrs[i].ttable = tk->ttable;
-        tkrs[i].tid = i+1;
-        if ((presult = pthread_create(&tkrs[i].thread, NULL, thinker_entry, &tkrs[i])) != 0) {
-            cibyl_write_log("pthread_create: %s\n", strerror(errno));
-            result = CIBYL_EABORT;
-            goto err_join;
-        }
     }
 
     /* Become a thinker. */
@@ -238,9 +212,9 @@ cibyl_errno_t eng_set_ucifen(engine_t *eng, char *fen)
     return CIBYL_EOK;
 }
 
-void eng_notify_go(engine_t *eng, const go_param_t *opts)
+void eng_start_search(engine_t *eng, const search_params_t *opts)
 {
-    eng->go_params = *opts;
+    eng->params = *opts;
     atomic_store_explicit(&eng->stop_flag, false, memory_order_relaxed);
     pthread_barrier_wait(&eng->start);
 }
@@ -257,7 +231,168 @@ void eng_notify_ponderhit(engine_t *eng)
 
 void eng_get_result(engine_t *eng)
 {
-    pthread_barrier_wait(&eng->end);
     // TODO: Collect the result from the ttable once implemented.
 }
 
+void eng_init(engine_t *eng)
+{
+    /* Mark the board, tables, and thread pool as uninitialized. */
+    eng->board = NULL;
+    eng->ttable = NULL;
+    eng->thinkers = NULL;
+}
+
+cibyl_errno_t eng_prepare_board(engine_t *eng)
+{
+    cibyl_errno_t result = CIBYL_EOK;
+    cb_error_t cb_error;
+    cb_errno_t cb_errno;
+
+    if ((eng->board = (cb_board_t*)malloc(sizeof(cb_board_t))) == NULL) {
+        cibyl_write_log("malloc: %s\n", strerror(errno));
+        goto out;
+    }
+
+    if ((cb_errno = cb_board_init(&cb_error, eng->board)) != CB_EOK) {
+        cibyl_write_log("cb_board_init: %s\n", cb_error.desc);
+        goto err_free_board;
+    }
+
+    if ((cb_errno = cb_tables_init(&cb_error)) != CB_EOK) {
+        cibyl_write_log("cb_board_init: %s\n", cb_error.desc);
+        goto err_deinit_board;
+    }
+
+    goto out;
+
+err_deinit_board:
+    cb_board_free(eng->board);
+err_free_board:
+    free(eng->board);
+    eng->board = NULL;
+
+out:
+    return result;
+}
+
+void eng_cleanup_board(engine_t *eng)
+{
+    cb_tables_free();
+    cb_board_free(eng->board);
+    free(eng->board);
+    eng->board = NULL;
+}
+
+cibyl_errno_t eng_prepare_ttable(engine_t *eng)
+{
+    cibyl_errno_t result = CIBYL_EOK;
+    int presult = 0;
+    int i;
+
+    /* Allocate memory for the thread pool. */
+    if ((eng->ttable = (ttable_t*)malloc(sizeof(ttable_t))) == NULL) {
+        cibyl_write_log("malloc: %s\n", strerror(errno));
+        result = CIBYL_ENOMEM;
+        goto out;
+    }
+
+    /* Initialize synchronization primitives. */
+    if ((presult = pthread_barrier_init(&eng->start, NULL, eng->nthinkers + 1)) != 0) {
+        cibyl_write_log("pthread_barrier_init: %s\n", strerror(presult));
+        result = CIBYL_EABORT;
+        goto err_free;
+    };
+
+    if ((presult = pthread_barrier_init(&eng->end, NULL, eng->nthinkers + 1)) != 0) {
+        cibyl_write_log("pthread_barrier_init: %s\n", strerror(presult));
+        result = CIBYL_EABORT;
+        goto err_destroy_start;
+    };
+
+    /* Spawn the thinker threads. */
+    for (i = 0; i < eng->nthinkers - 1; i++) {
+        eng->thinkers[i].eng = eng;
+        eng->thinkers[i].root = eng->board;
+        eng->thinkers[i].ttable = eng->ttable;
+        eng->thinkers[i].tid = i+1;
+        if ((presult = pthread_create(&eng->thinkers[i].thread, NULL,
+                                      thinker_entry, &eng->thinkers[i])) != 0) {
+            cibyl_write_log("pthread_create: %s\n", strerror(errno));
+            result = CIBYL_EABORT;
+            goto err_join;
+        }
+    }
+
+    goto out;
+
+err_join:
+    for (; i > 0; i--) {
+        pthread_cancel(eng->thinkers[i].thread);
+        pthread_join(eng->thinkers[i].thread, NULL);
+    }
+
+    pthread_barrier_destroy(&eng->end);
+err_destroy_start:
+    pthread_barrier_destroy(&eng->start);
+err_free:
+    free(eng->ttable);
+    eng->ttable = NULL;
+
+out:
+    return result;
+}
+
+void eng_cleanup_ttable(engine_t *eng)
+{
+    free(eng->ttable);
+    eng->ttable = NULL;
+}
+
+cibyl_errno_t eng_prepare_thinkers(engine_t *eng)
+{
+    cibyl_errno_t result = CIBYL_EOK;
+
+    if ((eng->thinkers = (thinker_t*)malloc(eng->nthinkers * sizeof(thinker_t))) == NULL) {
+        cibyl_write_log("malloc: %s\n", strerror(errno));
+        goto err;
+    }
+
+err:
+    return result;
+}
+
+void eng_cleanup_thinkers(engine_t *eng)
+{
+
+}
+
+cibyl_errno_t eng_prepare(engine_t *eng)
+{
+    cibyl_errno_t result = CIBYL_EOK;
+    
+    /* Potentially initialize the board and move tables. */
+    if (eng->board == NULL) {
+    }
+
+    /* Potentially initialize the ttable. */
+    if (eng->ttable == NULL && (result = eng_prepare_ttable(eng)) != CIBYL_EOK) {
+        goto err;
+    }
+
+    /* Potentially inititialize the thread pool. */
+    if (eng->thinkers == NULL && (result = eng_prepare_thinkers(eng)) != CIBYL_EOK) {
+        goto err;
+    }
+
+err:
+}
+
+void eng_deinit(engine_t *eng)
+{
+    /* Potentially cleanup the board and move tables. */
+    if (eng->board != NULL) {
+        cb_board_free(eng->board);
+        cb_board_
+    }
+
+}

@@ -51,24 +51,22 @@ typedef struct {
     int64_t movetime;       /**< The amount of time that the bot should think for. */
     bool ponder;            /**< Flag that states if this is a ponder search. */
     bool infinite;          /**< Flag that states if this search should be infinite. */
-    bool ready;             /**< Flag that states if the search is ready. */
-} go_param_t;
+} search_params_t;
 
 /**
  * @breif Defines a Lazy SMP pool of threads that funcitons as an engine.
  */
 struct engine {
     /* Fields for managing the board state. */
-    cb_board_t board;       /**< The current position. */
-    ttable_t ttable;        /**< The transposition tables. */
-    go_param_t go_params;   /**< The parameters for any active search. */
+    cb_board_t *board;      /**< The current position. */
+    ttable_t *ttable;       /**< The transposition tables. */
+    search_params_t params; /**< The parameters for any active search. */
 
     /* Synchronization primitives for the thread pool. */
     int nthinkers;          /**< The number of thinkers in the engine. */
-    thinker_t manager;      /**< Backing data for the manager. */
-    pthread_barrier_t init; /**< Initialization barrier. */
-    pthread_barrier_t start;/**< Barrier for start of a search. */
-    pthread_barrier_t end;  /**< Barrier for completion of a search. */
+    thinker_t *thinkers;    /**< Backing data for the manager. */
+    pthread_barrier_t start;/**< Engine <--> UI barrier to await commands. */
+    pthread_barrier_t end;  /**< Engine <--> Engine barrier to complete search. */
     atomic_bool stop_flag;  /**< Checked by the thinkers to see if they should stop search. */
     atomic_bool exit_flag;  /**< Checked by the thinkers to see if they should shut down. */
     
@@ -83,7 +81,7 @@ struct engine {
  * @breif Clears a go_params struct.
  * @param params The struct to clear.
  */
-static void clear_go_params(go_param_t *params) {
+static void clear_search_params(search_params_t *params) {
     cb_mvlst_clear(&params->searchmoves);
     params->ponder = false;
     params->wtime = -1;
@@ -99,18 +97,35 @@ static void clear_go_params(go_param_t *params) {
 }
 
 /**
- * @brief Begins initializing the engine.
+ * @brief Initializes the engine struct.
+ *
+ * This initialization is minimal as per the UCI specification.
+ * For complete initialization, see eng_preapre.
+ *
  * @param eng The engine to initialize.
- * @return An error code for any failed threading calls.
  */
-cibyl_errno_t eng_begin_init(engine_t *eng);
+void eng_init(engine_t *eng);
 
 /**
- * @brief Blocks the calling thread until the engine is ready.
- * @param eng The engine to initialize.
- * @param report_fn The report function to register.
+ * @brief Initializes any uninitialized components (i.e. thread pool)
+ *
+ * On failure, this may leave an engine half-initialized.
+ * This function guarantees, however, that a second call to eng_preapre
+ * is safe, and a call to eng_deinit performs accurate cleanup after error.
+ *
+ * @param eng The engine to prepare.
+ * @return An error code for any failed calls.
  */
-void eng_await_ready(engine_t *eng);
+cibyl_errno_t eng_prepare(engine_t *eng);
+
+/**
+ * @brief Deinitializes the engine struct.
+ *
+ * Performs cleanup associated with the board, tables, and thread pool.
+ *
+ * @param eng The engine to deinitialize.
+ */
+void eng_deinit(engine_t *eng);
 
 /**
  * @brief Registers an error reporting function for the engine.
@@ -158,7 +173,7 @@ cibyl_errno_t eng_set_ucifen(engine_t *eng, char *fen);
  * @param eng The engine to notify.
  * @param opts The options for the search.
  */
-void eng_notify_go(engine_t *eng, const go_param_t *opts);
+void eng_start_search(engine_t *eng, const search_params_t *opts);
 
 /**
  * @breif Notifies the engine that it should stop a search as soon as possible.
