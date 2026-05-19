@@ -49,18 +49,21 @@ const char ENGINE_AUTHOR[] = "Joel Kuehne";
 cibyl_errno_t uci_report_error(engine_t *eng, void *udata)
 {
     /* TODO: Implement me. */
+    printf("Error!\n");
     return CIBYL_EABORT;
 }
 
 cibyl_errno_t uci_report_bestmove(engine_t *eng, void *udata)
 {
     /* TODO: Implement me. */
+    printf("Bestmove!\n");
     return CIBYL_EABORT;
 }
 
 cibyl_errno_t uci_report_info(engine_t *eng, void *udata)
 {
     /* TODO: Implement me. */
+    printf("Info!\n");
     return CIBYL_EABORT;
 }
 
@@ -131,7 +134,8 @@ cibyl_errno_t handle_go(uci_engine_t *eng, char *opts)
 
     /* Handle null input. */
     if (opts == NULL) {
-        return CIBYL_EABORT;
+        search_params.infinite = true;
+        goto search;
     }
 
     /* Loop through all of the arguments to the go command. */
@@ -187,6 +191,7 @@ cibyl_errno_t handle_go(uci_engine_t *eng, char *opts)
         token = strtok(NULL, STR_UCI_DELIMS);
     }
 
+search:
     /* Start thinking. */
     if (eng_start_search(&eng->eng, &search_params)) {
         return CIBYL_EABORT;
@@ -248,8 +253,6 @@ cibyl_errno_t handle_cmd(uci_engine_t *eng, char *cmd)
 
         /* Miscelaneous functions. */
         else if (strcmp(cmd, STR_QUIT) == 0) {
-            eng_broadcast_exit(&eng->eng);
-            eng_deinit(&eng->eng);
             eng->exit = true;
         } else if (strcmp(cmd, STR_DISPLAY) == 0) {
             /* TODO: Implement me. */
@@ -265,7 +268,7 @@ cibyl_errno_t handle_cmd(uci_engine_t *eng, char *cmd)
     return result;
 }
 
-cibyl_errno_t uci_init(uci_engine_t *eng, uint32_t nthreads)
+cibyl_errno_t uci_init(uci_engine_t *eng)
 {
     int result = CIBYL_EOK;
 
@@ -314,7 +317,8 @@ cibyl_errno_t uci_process(uci_engine_t *eng)
 {
     char cmd[MAX_COMMAND_LEN];
 
-    /* TODO: Use select to wait for data from multiple fds. */
+    /* TODO: Use select to wait for data from multiple fds.
+     * This isn't a big deal until threads can throw errors (tablebase reads). */
     while (!eng->exit && fgets(cmd, MAX_COMMAND_LEN, stdin) != NULL) {
         if (handle_cmd(eng, cmd)) {
             return CIBYL_EABORT;

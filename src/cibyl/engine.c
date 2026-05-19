@@ -86,8 +86,11 @@ void thinker_error(engine_t *eng, char *format, ...)
     va_start(args, format);
     cibyl_vwrite_log(format, args);
     va_end(args);
-    if (eng->report_error != NULL)
-        eng->report_error(eng, eng->udata);
+    if (eng->report_error != NULL) {
+        if (eng->report_error(eng, eng->udata)) {
+            cibyl_write_log("report_error failed\n");
+        }
+    }
 }
 
 void thinker_handle_go(thinker_t *tk)
@@ -105,9 +108,10 @@ void *thinker_entry(void *thinker_args)
         /* Wait the exit flag or for the engine to unset the stop flag. */
         pthread_mutex_lock(&tk->eng->sync_lock);
         tk->eng->waiting_threads += 1;
-        while (!tk->eng->exit_flag && !tk->eng->search_flag) {
+        if (tk->eng->waiting_threads == tk->eng->nthinkers)
+            pthread_cond_signal(&tk->eng->ready);
+        while (!tk->eng->exit_flag && !tk->eng->search_flag)
             pthread_cond_wait(&tk->eng->signal, &tk->eng->sync_lock);
-        }
         tk->eng->waiting_threads -= 1;
         tk->eng->active_threads += 1;
         pthread_mutex_unlock(&tk->eng->sync_lock);
@@ -120,8 +124,11 @@ void *thinker_entry(void *thinker_args)
             break;
 
         /* The last thread should send results back to the caller. */
-        if (atomic_fetch_add(&tk->eng->active_threads, -1) == 1)
-            tk->eng->report_best(tk->eng, tk->eng->udata);
+        if (atomic_fetch_add(&tk->eng->active_threads, -1) == 1) {
+            if (tk->eng->report_best(tk->eng, tk->eng->udata)) {
+                cibyl_write_log("report_best failed");
+            }
+        }
     }
 
 out:
@@ -167,6 +174,9 @@ void eng_init(engine_t *eng)
     eng->board = NULL;
     eng->ttable = NULL;
     eng->thinkers = NULL;
+
+    /* Set up sane defaults for hash size (TODO) and thread pool count. */
+    eng->nthinkers = 1;
 }
 
 cibyl_errno_t eng_prepare_board(engine_t *eng)

@@ -6,8 +6,6 @@
 #include <threads.h>
 #include <unistd.h>
 
-#define OPTIONAL_ARGS \
-    OPTIONAL_INT_ARG(threads, -1, "-j", "threads", "Number of threads to use")
 #define BOOLEAN_ARGS \
     BOOLEAN_ARG(help, "-h", "Show help")
 #include "easy_args.h"
@@ -44,27 +42,19 @@ int main(int argc, char *argv[])
         goto out;
     }
 
-    /* Detect optimal thread count on linux if no count provided. */
-    if (args.threads == -1) {
-#ifdef __linux__
-        args.threads = sysconf(_SC_NPROCESSORS_ONLN);
-#else
-        args.threads = 1;
-#endif
-    }
+    /* Set the log file to stderr. */
+    log_file = stderr;
 
     /* Initialize the engine. */
-    if (uci_init(&eng, args.threads)) {
+    if (uci_init(&eng)) {
         result = 1;
         goto out;
     };
 
     /* Initialize the engine and begin processing messages. */
-    while (true) {
-        if (uci_process(&eng)) {
-            result = 1;
-            goto out_uci_cleanup;
-        }
+    if (uci_process(&eng)) {
+        result = 1;
+        goto out_uci_cleanup;
     }
 
 out_uci_cleanup:

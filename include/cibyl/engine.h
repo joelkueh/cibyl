@@ -14,6 +14,7 @@
 #include "cibyl.h"
 
 #define COMMAND_QUEUE_SIZE 32
+#define DEFAULT_POOL_SIZE 1
 
 /* Forward declaration of the engine struct. */
 typedef struct engine engine_t;

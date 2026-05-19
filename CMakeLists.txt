@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.30.8)
 project(khess VERSION 0.0.1)
 
 # Compile Flags
-set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_EXPORT_COMPILE_COMMANDS True)

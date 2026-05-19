@@ -57,10 +57,9 @@ typedef struct {
 /**
  * @breif Initializes a UCI chess engine.
  * @param engine The engine to initialize.
- * @param nthreads The number of threads to initialize.
  * @return An error code for any failed system calls.
  */
-cibyl_errno_t uci_init(uci_engine_t *eng, uint32_t nthreads);
+cibyl_errno_t uci_init(uci_engine_t *eng);
 
 /**
  * @brief Main loop for the UCI chess engine. Forwards UCI commands to the engine.
