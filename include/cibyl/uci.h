@@ -46,7 +46,8 @@ typedef enum {
 typedef struct {
     engine_t eng;      /**< The engine itself. */
     bool debug;        /**< Whether or not the engine is in debug mode. */
-    bool initialized;  /**< Flag for whether or not the engin has been initialized. */
+    bool initialized;  /**< Flag for whether or not the engine has been initialized. */
+    bool exit;         /**< Flag for whether the engine should exit. */
 #ifdef _WIN32
 #else
     int error_pipe[2]; /**< Pipe for the thread pool to report errors on. */

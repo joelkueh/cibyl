@@ -13,39 +13,86 @@
 #include <stdlib.h>
 #include "engine.h"
 
-/**
- * @breif Handles errors in a thinker thread.
- *
- * If a thinker encounters an error, it must set the atomic termination flag,
- * log the information to the console, and exit.
- *
- * @param eng The engine that the thinker belongs to.
- * @param format A printf compliant format string.
- * @param ... All remaining arguments passed into the format string.
- */
-void thinker_panic(engine_t *eng, char *format, ...)
-{
-    va_list args;
-    atomic_store_explicit(&eng->exit_flag, true, memory_order_relaxed);
-    va_start(args, format);
-    cibyl_vwrite_log(format, args);
-    va_end(args);
-    if (eng->report_error != NULL)
-        eng->report_error(eng);
-    pthread_exit((void*)1);
-}
-
-void eng_signal_exit(engine_t *eng)
+void eng_broadcast_exit(engine_t *eng)
 {
     pthread_mutex_lock(&eng->sync_lock);
+    eng->search_flag = false;
     eng->exit_flag = true;
     pthread_cond_broadcast(&eng->signal);
     pthread_cond_broadcast(&eng->ready);
     pthread_mutex_unlock(&eng->sync_lock);
 }
 
+void eng_broadcast_stop(engine_t *eng)
+{
+    pthread_mutex_lock(&eng->sync_lock);
+    eng->search_flag = false;
+    pthread_mutex_unlock(&eng->sync_lock);
+}
+
+cibyl_errno_t eng_start_search(engine_t *eng, const search_params_t *opts)
+{
+    cibyl_errno_t result = CIBYL_EOK;
+
+    /* Prepare the engine if anything is not ready. */
+    if (eng_prepare(eng)) {
+        result = CIBYL_EABORT;
+        goto out;
+    }
+
+    /* Broadcast the search to the thinkers. */
+    pthread_mutex_lock(&eng->sync_lock);
+    while (eng->waiting_threads < eng->nthinkers) {
+        pthread_cond_wait(&eng->ready, &eng->sync_lock);
+    }
+    eng->search_flag = true;
+    eng->params = *opts;
+    pthread_cond_broadcast(&eng->signal);
+    pthread_mutex_unlock(&eng->sync_lock);
+
+out:
+    return result;
+}
+
+void eng_register_error(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, void *udata))
+{
+    eng->report_error = report_fn;
+}
+
+void eng_register_best(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, void *udata))
+{
+    eng->report_best = report_fn;
+}
+
+void eng_register_info(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, void *udata))
+{
+    eng->report_info = report_fn;
+}
+
+/**
+ * @breif Handles errors in a thinker thread.
+ *
+ * Signals all other theads to exit, notifies the caller,
+ * and writes a message to the log (often stderr).
+ *
+ * @param eng The engine that the thinker belongs to.
+ * @param format A printf compliant format string.
+ * @param ... All remaining arguments passed into the format string.
+ */
+void thinker_error(engine_t *eng, char *format, ...)
+{
+    va_list args;
+    eng_broadcast_exit(eng);
+    va_start(args, format);
+    cibyl_vwrite_log(format, args);
+    va_end(args);
+    if (eng->report_error != NULL)
+        eng->report_error(eng, eng->udata);
+}
+
 void thinker_handle_go(thinker_t *tk)
 {
+    /* TODO: Think. */
 }
 
 void *thinker_entry(void *thinker_args)
@@ -61,6 +108,7 @@ void *thinker_entry(void *thinker_args)
         while (!tk->eng->exit_flag && !tk->eng->search_flag) {
             pthread_cond_wait(&tk->eng->signal, &tk->eng->sync_lock);
         }
+        tk->eng->waiting_threads -= 1;
         tk->eng->active_threads += 1;
         pthread_mutex_unlock(&tk->eng->sync_lock);
 
@@ -73,7 +121,7 @@ void *thinker_entry(void *thinker_args)
 
         /* The last thread should send results back to the caller. */
         if (atomic_fetch_add(&tk->eng->active_threads, -1) == 1)
-            tk->eng->report_best(tk->eng);
+            tk->eng->report_best(tk->eng, tk->eng->udata);
     }
 
 out:
@@ -108,26 +156,9 @@ out:
     return result;
 }
 
-void eng_start_search(engine_t *eng, const search_params_t *opts)
-{
-    eng->params = *opts;
-    atomic_store_explicit(&eng->search_flag, false, memory_order_relaxed);
-    pthread_barrier_wait(&eng->start);
-}
-
-void eng_notify_stop(engine_t *eng)
-{
-    atomic_store_explicit(&eng->search_flag, true, memory_order_relaxed);
-}
-
 void eng_notify_ponderhit(engine_t *eng)
 {
     // TODO: Implement pondering.
-}
-
-void eng_get_result(engine_t *eng)
-{
-    // TODO: Collect the result from the ttable once implemented.
 }
 
 void eng_init(engine_t *eng)
@@ -214,13 +245,17 @@ cibyl_errno_t eng_prepare_thinkers(engine_t *eng)
     pthread_mutex_init(&eng->sync_lock, NULL);
     pthread_cond_init(&eng->signal, NULL);
     pthread_cond_init(&eng->ready, NULL);
+    eng->exit_flag = false;
+    eng->search_flag = false;
+    eng->waiting_threads = 0;
+    eng->active_threads = 0;
 
     /* Spawn the thinker threads. */
-    for (i = 0; i < eng->nthinkers - 1; i++) {
+    for (i = 0; i < eng->nthinkers; i++) {
         eng->thinkers[i].eng = eng;
         eng->thinkers[i].root = eng->board;
         eng->thinkers[i].ttable = eng->ttable;
-        eng->thinkers[i].tid = i+1;
+        eng->thinkers[i].tid = i;
         if ((presult = pthread_create(&eng->thinkers[i].thread, NULL,
                                       thinker_entry, &eng->thinkers[i])) != 0) {
             cibyl_write_log("pthread_create: %s\n", strerror(errno));
@@ -232,8 +267,7 @@ cibyl_errno_t eng_prepare_thinkers(engine_t *eng)
     goto out;
 
 err_join:
-    atomic_store(&eng->exit_flag, true);
-    pthread_cond_broadcast(&eng->signal);
+    eng_broadcast_exit(eng);
     for (; i > 0; i--) {
         pthread_join(eng->thinkers[i].thread, NULL);
     }
@@ -251,7 +285,13 @@ out:
 
 void eng_cleanup_thinkers(engine_t *eng)
 {
-
+    eng_broadcast_exit(eng);
+    for (int i = eng->nthinkers; i > 0; i--) {
+        pthread_join(eng->thinkers[i].thread, NULL);
+    }
+    pthread_cond_destroy(&eng->ready);
+    pthread_cond_destroy(&eng->signal);
+    pthread_mutex_destroy(&eng->sync_lock);
 }
 
 cibyl_errno_t eng_prepare(engine_t *eng)

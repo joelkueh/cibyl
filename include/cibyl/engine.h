@@ -74,10 +74,10 @@ struct engine {
     bool exit_flag;            /**< Checked by the thinkers to see if they should shut down. */
     
     /* Function pointers for data reporting. */
-    void *udata;                        /**< User data for report handlers. */
-    int (*report_error)(engine_t *eng); /**< Engine panic report function. */
-    int (*report_best)(engine_t *eng);  /**< Engine bestmove report function. */
-    int (*report_info)(engine_t *eng);  /**< Engine info report function. */
+    void *udata;                                               /**< User data for handlers. */
+    cibyl_errno_t (*report_error)(engine_t *eng, void *udata); /**< Error handler. */
+    cibyl_errno_t (*report_best)(engine_t *eng, void *udata);  /**< Bestmove handler. */
+    cibyl_errno_t (*report_info)(engine_t *eng, void *udata);  /**< Info handler. */
 };
 
 /**
@@ -135,21 +135,21 @@ void eng_deinit(engine_t *eng);
  * @param eng The engine to update.
  * @param report_fn The report function to register.
  */
-void eng_register_error(engine_t *eng, int (*report_fn)(engine_t *eng));
+void eng_register_error(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, void *udata));
 
 /**
  * @brief Registers a bestmove reporting function for the engine.
  * @param eng The engine to update.
  * @param report_fn The report function to register.
  */
-void eng_register_best(engine_t *eng, int (*report_fn)(engine_t *eng));
+void eng_register_best(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, void *udata));
 
 /**
  * @brief Registers an info reporting function for the engine.
  * @param eng The engine to update.
  * @param report_fn The report function to register.
  */
-void eng_register_info(engine_t *eng, int (*report_fn)(engine_t *eng));
+void eng_register_info(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, void *udata));
 
 /**
  * @breif Nicely frees all allocated memory and terminates threads.
@@ -176,7 +176,13 @@ cibyl_errno_t eng_set_ucifen(engine_t *eng, char *fen);
  * @param eng The engine to notify.
  * @param opts The options for the search.
  */
-void eng_start_search(engine_t *eng, const search_params_t *opts);
+cibyl_errno_t eng_start_search(engine_t *eng, const search_params_t *opts);
+
+/**
+ * @brief Signals that all threads should terminate.
+ * @param eng The engine to signal.
+ */
+void eng_broadcast_exit(engine_t *eng);
 
 /**
  * @breif Notifies the engine that it should stop a search as soon as possible.
@@ -186,7 +192,7 @@ void eng_start_search(engine_t *eng, const search_params_t *opts);
  *
  * @param eng The engine to notify.
  */
-void eng_notify_stop(engine_t *eng);
+void eng_broadcast_stop(engine_t *eng);
 
 /**
  * @breif Notifies the engine that the pondered move was played.

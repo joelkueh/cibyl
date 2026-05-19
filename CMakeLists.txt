@@ -30,7 +30,7 @@ target_include_directories(cblib
 # Add the debug executable.
 add_executable(debug
 	src/debug/debug.c
-        src/debug/perft.c
+  src/debug/perft.c
 )
 target_include_directories(debug
 	PRIVATE
@@ -54,6 +54,9 @@ target_include_directories(cibyl
 		${PROJECT_SOURCE_DIR}/include
 		${PROJECT_SOURCE_DIR}/include/cibyl
 		${PROJECT_SOURCE_DIR}/include/cblib
+)
+target_link_libraries(cibyl
+	cblib
 )
 
 # Create the server executable.

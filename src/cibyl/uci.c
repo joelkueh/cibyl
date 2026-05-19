@@ -8,6 +8,8 @@
 #include "cibyl.h"
 #include "uci.h"
 
+const size_t MAX_COMMAND_LEN = 4096;
+
 /* Command strings for matching. */
 const char STR_UCI[] = "uci";
 const char STR_DEBUG[] = "debug";
@@ -44,7 +46,7 @@ const char STR_EVAL[] = "eval";
 const char ENGINE_NAME[] = "Cibyl";
 const char ENGINE_AUTHOR[] = "Joel Kuehne";
 
-cibyl_errno_t uci_report_panic(engine_t *eng, void *udata)
+cibyl_errno_t uci_report_error(engine_t *eng, void *udata)
 {
     /* TODO: Implement me. */
     return CIBYL_EABORT;
@@ -186,7 +188,9 @@ cibyl_errno_t handle_go(uci_engine_t *eng, char *opts)
     }
 
     /* Start thinking. */
-    eng_start_search(&eng->eng, &search_params);
+    if (eng_start_search(&eng->eng, &search_params)) {
+        return CIBYL_EABORT;
+    }
 
     return CIBYL_EOK;
 }
@@ -213,14 +217,11 @@ cibyl_errno_t handle_cmd(uci_engine_t *eng, char *cmd)
             printf("id name %s\n", ENGINE_NAME);
             printf("id author %s\n", ENGINE_AUTHOR);
             printf("uciok\n");
-
-            /* Begin asynchronous initialization. */
-            eng_begin_init(&eng->eng);
         } else if (strcmp(cmd, STR_DEBUG) == 0) {
             eng->debug = true;
         } else if (strcmp(cmd, STR_ISREADY) == 0) {
             /* Wait for the engine to be ready to process input. */
-            eng_await_ready(&eng->eng);
+            eng_prepare(&eng->eng);
             printf("readyok\n");
         } else if (strcmp(cmd, STR_SETOPTION) == 0) {
             /* TODO: Implement me. */
@@ -240,14 +241,16 @@ cibyl_errno_t handle_cmd(uci_engine_t *eng, char *cmd)
         else if (strcmp(cmd, STR_GO) == 0) {
             result = handle_go(eng, strtok(NULL, ""));   /* Slice off the rest of the cmd. */
         } else if (strcmp(cmd, STR_STOP) == 0) {
-            eng_notify_stop(&eng->eng);
+            eng_broadcast_stop(&eng->eng);
         } else if (strcmp(cmd, STR_PONDERHIT) == 0) {
             eng_notify_ponderhit(&eng->eng);
         }
 
         /* Miscelaneous functions. */
         else if (strcmp(cmd, STR_QUIT) == 0) {
-            eng_cleanup(&eng->eng);
+            eng_broadcast_exit(&eng->eng);
+            eng_deinit(&eng->eng);
+            eng->exit = true;
         } else if (strcmp(cmd, STR_DISPLAY) == 0) {
             /* TODO: Implement me. */
         }
@@ -262,7 +265,7 @@ cibyl_errno_t handle_cmd(uci_engine_t *eng, char *cmd)
     return result;
 }
 
-cibyl_errno_t uci_init_engine(uci_engine_t *eng)
+cibyl_errno_t uci_init(uci_engine_t *eng, uint32_t nthreads)
 {
     int result = CIBYL_EOK;
 
@@ -281,15 +284,18 @@ cibyl_errno_t uci_init_engine(uci_engine_t *eng)
     }
 #endif
 
-    /* Do not initialize the engine yet. */
+    /* Set the engine as uninitialized. */
+    eng->debug = false;
+    eng->initialized = false;
+    eng->exit = false;
 
+    /* Register the handler functions for the different engine reports. */
+    eng_register_error(&eng->eng, uci_report_error);
+    eng_register_best(&eng->eng, uci_report_bestmove);
+    eng_register_info(&eng->eng, uci_report_info);
 
-    /* Initialize the underlying engine. */
-    if (eng_begin_init(&eng->eng)) {
-        cibyl_write_log("eng_begin_init: %s\n", strerror(errno));
-        result = CIBYL_EABORT;
-        goto out;
-    }
+    /* Bring the underlying engine to a sane state. */
+    eng_init(&eng->eng);
 
 err_close_pipe:
 #ifdef _WIN32
@@ -304,17 +310,32 @@ out:
     return result;
 }
 
-cibyl_errno_t uci_init(uci_engine_t *eng, uint32_t nthreads)
-{
-    /* Set the engine as uninitialized. */
-    eng->debug = false;
-    eng->initialized = false;
-
-    /* Register the handler functions for the different engine reports. */
-}
-
 cibyl_errno_t uci_process(uci_engine_t *eng)
 {
-    /* TODO: Implement me. */
+    char cmd[MAX_COMMAND_LEN];
+
+    /* TODO: Use select to wait for data from multiple fds. */
+    while (!eng->exit && fgets(cmd, MAX_COMMAND_LEN, stdin) != NULL) {
+        if (handle_cmd(eng, cmd)) {
+            return CIBYL_EABORT;
+        }
+    }
+
+    /* TODO: Detect if the exit was caused by an error in the engine. */
+    return CIBYL_EOK;
 }
 
+void uci_deinit(uci_engine_t *eng)
+{
+    /* Close the panic notification pipe. */
+#ifdef _WIN32
+    CloseHandle(eng->h_msg_read)):
+    CloseHandle(eng->h_msg_write));
+#else
+    close(eng->error_pipe[0]);
+    close(eng->error_pipe[1]);
+#endif
+
+    /* Deinitialize the engine. */
+    eng_deinit(&eng->eng);
+}
