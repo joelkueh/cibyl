@@ -63,12 +63,15 @@ struct engine {
     search_params_t params; /**< The parameters for any active search. */
 
     /* Synchronization primitives for the thread pool. */
-    int nthinkers;          /**< The number of thinkers in the engine. */
-    thinker_t *thinkers;    /**< Backing data for the manager. */
-    pthread_barrier_t start;/**< Engine <--> UI barrier to await commands. */
-    pthread_barrier_t end;  /**< Engine <--> Engine barrier to complete search. */
-    atomic_bool stop_flag;  /**< Checked by the thinkers to see if they should stop search. */
-    atomic_bool exit_flag;  /**< Checked by the thinkers to see if they should shut down. */
+    int nthinkers;             /**< The number of thinkers in the engine. */
+    thinker_t *thinkers;       /**< Backing data for the manager. */
+    pthread_mutex_t sync_lock; /**< Lock to help synchronize the engine. */
+    pthread_cond_t signal;     /**< Condition that is signaled by the main thread. */
+    pthread_cond_t ready;      /**< Condition for when the thread pool is ready to search. */
+    int waiting_threads;       /**< Number of threads waiting on the lock. */
+    atomic_int active_threads; /**< Number of threads currently searching. */
+    bool search_flag;          /**< Checked by thinkers to see if they should search. */
+    bool exit_flag;            /**< Checked by the thinkers to see if they should shut down. */
     
     /* Function pointers for data reporting. */
     void *udata;                        /**< User data for report handlers. */
