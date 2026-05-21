@@ -11,7 +11,7 @@
 
 /* The only way a game is longer than 1024 moves is if someone is doing something malicious.
  * Make strict guarantees about safety while also making things fast for default use. */
-#define CB_STACK_INIT_SIZE 1024
+#define HISTORY_INIT_SIZE 1024
 
 /**
  * Format:
@@ -19,7 +19,7 @@
  */
 
 /**
- * Sets the size of *hist to hist->count + CB_STACK_INIT_SIZE elements.
+ * Sets the size of *hist to hist->count + HISTORY_INIT_SIZE elements.
  */
 static inline int cb_hist_stack_reserve(cb_hist_stack_t *hist, uint32_t added_depth)
 {
@@ -30,7 +30,7 @@ static inline int cb_hist_stack_reserve(cb_hist_stack_t *hist, uint32_t added_de
             (hist->count + added_depth) * sizeof(cb_hist_ele_t));
     if (hist->data == NULL)
         return ENOMEM;
-    hist->size += CB_STACK_INIT_SIZE;
+    hist->size += HISTORY_INIT_SIZE;
     return 0;
 }
 
@@ -39,10 +39,10 @@ static inline int cb_hist_stack_reserve(cb_hist_stack_t *hist, uint32_t added_de
  */
 static inline int cb_hist_stack_init(cb_hist_stack_t *hist)
 {
-    if ((hist->data = (cb_hist_ele_t *)malloc(CB_STACK_INIT_SIZE * sizeof(cb_hist_ele_t))) == NULL)
+    if ((hist->data = (cb_hist_ele_t *)malloc(HISTORY_INIT_SIZE * sizeof(cb_hist_ele_t))) == NULL)
         return ENOMEM;
     hist->count = 0;
-    hist->size = CB_STACK_INIT_SIZE;
+    hist->size = HISTORY_INIT_SIZE;
     return 0;
 }
 
