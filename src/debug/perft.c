@@ -2,7 +2,6 @@
 #include <time.h>
 
 #include "perft.h"
-#include "crosstime.h"
 #include "cb_lib.h"
 #include "cb_move.h"
 #include <inttypes.h>
@@ -84,8 +83,9 @@ int perft(cb_board_t *board, int depth)
     char buf[6];
     int i;
 
-    uint64_t start_time;
-    uint64_t end_time;
+    struct timespec start;
+    struct timespec end;
+    double elapsed;
 
     /* Exit early if depth is less than 1. */
     if (depth < 1) {
@@ -101,7 +101,7 @@ int perft(cb_board_t *board, int depth)
     }
 
     /* Loop through all of the first levels and calculate the number of moves. */
-    start_time = time_ns();
+    timespec_get(&start, TIME_UTC);
     cb_gen_board_tables(&state, board);
     cb_gen_moves(&mvlst, board, &state);
     for (i = 0; i < cb_mvlst_size(&mvlst); i++) {
@@ -113,10 +113,11 @@ int perft(cb_board_t *board, int depth)
         printf("%s: %" PRIu64 "\n", buf, cnt);
         cb_unmake(board);
     }
-    end_time = time_ns();
+    timespec_get(&end, TIME_UTC);
+    elapsed = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / 1.0e9;
     printf("\n");
     printf("Nodes searched: %" PRIu64 "\n", total);
-    printf("Time: %.3fms\n", (end_time - start_time) / 1000000.0);
+    printf("Time: %.3f ms\n", elapsed * 1.0e3);
     printf("\n");
 
     return 0;
@@ -135,8 +136,9 @@ int perft_cheat(cb_board_t *board, int depth)
     char buf[6];
     int i;
 
-    uint64_t start_time;
-    uint64_t end_time;
+    struct timespec start;
+    struct timespec end;
+    double elapsed;
 
     /* Exit early if depth is less than 1. */
     if (depth < 1) {
@@ -152,7 +154,7 @@ int perft_cheat(cb_board_t *board, int depth)
     }
 
     /* Loop through all of the first levels and calculate the number of moves. */
-    start_time = time_ns();
+    timespec_get(&start, TIME_UTC);
     cb_gen_board_tables(&state, board);
     cb_gen_moves(&mvlst, board, &state);
     for (i = 0; i < cb_mvlst_size(&mvlst); i++) {
@@ -164,10 +166,11 @@ int perft_cheat(cb_board_t *board, int depth)
         printf("%s: %" PRIu64 "\n", buf, cnt);
         cb_unmake(board);
     }
-    end_time = time_ns();
+    timespec_get(&end, TIME_UTC);
+    elapsed = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) / 1.0e9;
     printf("\n");
     printf("Nodes searched: %" PRIu64 "\n", total);
-    printf("Time: %" PRIu64 "ms\n", (end_time - start_time) / 1000000);
+    printf("Time: %.3f ms\n", elapsed * 1.0e3);
     printf("\n");
 
     return 0;

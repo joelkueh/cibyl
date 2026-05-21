@@ -13,7 +13,6 @@
 #include "cb_move.h"
 #include "cibyl.h"
 
-#define COMMAND_QUEUE_SIZE 32
 #define DEFAULT_POOL_SIZE 1
 
 /* Forward declaration of the engine struct. */
@@ -33,6 +32,7 @@ typedef struct {
     ttable_t *ttable;       /**< The transposition table to add thoughts to. */
     engine_t *eng;          /**< The engine that the thinker belongs to. */
     pthread_t thread;       /**< The thread that backs this thinker. */
+    cb_board_t board;       /**< The board that the engine thinks on. */
     int tid;                /**< ID of the thinker thread. */
 } thinker_t;
 
@@ -71,7 +71,7 @@ struct engine {
     pthread_cond_t ready;      /**< Condition for when the thread pool is ready to search. */
     int waiting_threads;       /**< Number of threads waiting on the lock. */
     atomic_int active_threads; /**< Number of threads currently searching. */
-    bool search_flag;          /**< Checked by thinkers to see if they should search. */
+    atomic_bool search_flag;   /**< Checked by thinkers to see if they should search. */
     bool exit_flag;            /**< Checked by the thinkers to see if they should shut down. */
     
     /* Function pointers for data reporting. */
@@ -79,6 +79,7 @@ struct engine {
     cibyl_errno_t (*report_error)(engine_t *eng, void *udata); /**< Error handler. */
     cibyl_errno_t (*report_best)(engine_t *eng, void *udata);  /**< Bestmove handler. */
     cibyl_errno_t (*report_info)(engine_t *eng, void *udata);  /**< Info handler. */
+    cb_move_t bestmove; /**< TODO: Remove. */
 };
 
 /**

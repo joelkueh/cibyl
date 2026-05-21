@@ -11,7 +11,10 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <eval.h>
 #include "engine.h"
+
+#define DEFAULT_FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 void eng_broadcast_exit(engine_t *eng)
 {
@@ -93,15 +96,29 @@ void thinker_error(engine_t *eng, char *format, ...)
     }
 }
 
-void thinker_handle_go(thinker_t *tk)
+void thinker_search(thinker_t *tk)
 {
-    /* TODO: Think. */
+    /* TODO: Load the position into the internal board. */
+
+    /* TODO: Complete the search. */
+    tk->eng->bestmove = iterative_deepening(tk->eng->board, &tk->eng->search_flag);
+
+    /* TODO: Collect the results? Maybe leave that to the report handler? */
 }
 
 void *thinker_entry(void *thinker_args)
 {
     thinker_t *tk = (thinker_t *)thinker_args;
     cibyl_errno_t result = CIBYL_EOK;
+    cb_error_t cb_error;
+    cb_errno_t cb_errno;
+
+    /* Allocate a board to search on. */
+    if (cb_board_init(&cb_error, &tk->board) != CB_EOK) {
+        cibyl_write_log("cb_board_init: %s\n", cb_error.desc);
+        result = CIBYL_EABORT;
+        goto out;
+    }
 
     /* Start thinking. */
     while (true) {
@@ -117,7 +134,7 @@ void *thinker_entry(void *thinker_args)
         pthread_mutex_unlock(&tk->eng->sync_lock);
 
         /* Jump into the search loop. */
-        thinker_handle_go(tk);
+        thinker_search(tk);
 
         /* Don't report if the exit flag is active. */
         if (tk->eng->exit_flag)
@@ -130,6 +147,9 @@ void *thinker_entry(void *thinker_args)
             }
         }
     }
+
+    /* Free the internal board. */
+    cb_board_free(&tk->board);
 
 out:
     return (void*)result;
@@ -182,21 +202,31 @@ void eng_init(engine_t *eng)
 cibyl_errno_t eng_prepare_board(engine_t *eng)
 {
     cibyl_errno_t result = CIBYL_EOK;
+    char fen[] = DEFAULT_FEN;
     cb_error_t cb_error;
     cb_errno_t cb_errno;
 
     if ((eng->board = (cb_board_t*)malloc(sizeof(cb_board_t))) == NULL) {
         cibyl_write_log("malloc: %s\n", strerror(errno));
+        result = CIBYL_ENOMEM;
         goto out;
-    }
-
-    if ((cb_errno = cb_board_init(&cb_error, eng->board)) != CB_EOK) {
-        cibyl_write_log("cb_board_init: %s\n", cb_error.desc);
-        goto err_free_board;
     }
 
     if ((cb_errno = cb_tables_init(&cb_error)) != CB_EOK) {
         cibyl_write_log("cb_board_init: %s\n", cb_error.desc);
+        result = CIBYL_EABORT;
+        goto err_deinit_board;
+    }
+
+    if ((cb_errno = cb_board_init(&cb_error, eng->board)) != CB_EOK) {
+        cibyl_write_log("cb_board_init: %s\n", cb_error.desc);
+        result = CIBYL_EABORT;
+        goto err_free_board;
+    }
+
+    if ((cb_errno = cb_board_from_fen(&cb_error, eng->board, fen)) != CB_EOK) {
+        cibyl_write_log("cb_board_from_fen: %s\n", cb_error.desc);
+        result = CIBYL_EABORT;
         goto err_deinit_board;
     }
 
@@ -296,7 +326,7 @@ out:
 void eng_cleanup_thinkers(engine_t *eng)
 {
     eng_broadcast_exit(eng);
-    for (int i = eng->nthinkers; i > 0; i--) {
+    for (int i = 0; i < eng->nthinkers; i++) {
         pthread_join(eng->thinkers[i].thread, NULL);
     }
     pthread_cond_destroy(&eng->ready);
@@ -310,16 +340,19 @@ cibyl_errno_t eng_prepare(engine_t *eng)
     
     /* Potentially initialize the board and move tables. */
     if (eng->board == NULL && (result = eng_prepare_board(eng)) != CIBYL_EOK) {
+        result = CIBYL_EABORT;
         goto err;
     }
 
     /* Potentially initialize the ttable. */
     if (eng->ttable == NULL && (result = eng_prepare_ttable(eng)) != CIBYL_EOK) {
+        result = CIBYL_EABORT;
         goto err;
     }
 
     /* Potentially inititialize the thread pool. */
     if (eng->thinkers == NULL && (result = eng_prepare_thinkers(eng)) != CIBYL_EOK) {
+        result = CIBYL_EABORT;
         goto err;
     }
 
@@ -329,21 +362,21 @@ err:
 
 void eng_deinit(engine_t *eng)
 {
-    /* Potentially cleanup the board and move tables. */
-    if (eng->board != NULL) {
-        eng_cleanup_board(eng);
-        eng->board = NULL;
+    /* Potentially cleanup the thread pool. */
+    if (eng->thinkers != NULL) {
+        eng_cleanup_thinkers(eng);
+        eng->thinkers = NULL;
     }
 
-    /* Potentially cleanup the ttable and move tables. */
+    /* Potentially cleanup the ttable. */
     if (eng->ttable != NULL) {
         eng_cleanup_ttable(eng);
         eng->ttable = NULL;
     }
 
-    /* Potentially cleanup the thread pool. */
-    if (eng->thinkers != NULL) {
-        eng_cleanup_thinkers(eng);
-        eng->thinkers = NULL;
+    /* Potentially cleanup the board and move tables. */
+    if (eng->board != NULL) {
+        eng_cleanup_board(eng);
+        eng->board = NULL;
     }
 }

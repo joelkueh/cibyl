@@ -3,6 +3,11 @@
 cmake_minimum_required(VERSION 3.30.8)
 project(khess VERSION 0.0.1)
 
+# Required C version
+set(CMAKE_C_STANDARD 23)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+
 # Compile Flags
 set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
@@ -48,6 +53,7 @@ add_executable(cibyl
 	src/cibyl/cibyl.c
 	src/cibyl/uci.c
 	src/cibyl/engine.c
+	src/cibyl/eval.c
 )
 target_include_directories(cibyl
 	PRIVATE

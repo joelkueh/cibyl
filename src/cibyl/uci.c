@@ -50,21 +50,22 @@ cibyl_errno_t uci_report_error(engine_t *eng, void *udata)
 {
     /* TODO: Implement me. */
     printf("Error!\n");
-    return CIBYL_EABORT;
+    return CIBYL_EOK;
 }
 
 cibyl_errno_t uci_report_bestmove(engine_t *eng, void *udata)
 {
-    /* TODO: Implement me. */
-    printf("Bestmove!\n");
-    return CIBYL_EABORT;
+    char buf[6];
+    cb_mv_to_uci_algbr(buf, eng->bestmove);
+    printf("bestmove %s\n", buf);
+    return CIBYL_EOK;
 }
 
 cibyl_errno_t uci_report_info(engine_t *eng, void *udata)
 {
     /* TODO: Implement me. */
     printf("Info!\n");
-    return CIBYL_EABORT;
+    return CIBYL_EOK;
 }
 
 cibyl_errno_t handle_position(uci_engine_t *eng, char *opts)

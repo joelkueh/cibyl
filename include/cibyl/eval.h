@@ -2,6 +2,7 @@
 #ifndef CYBIL_EVAL_H
 #define CYBIL_EVAL_H
 
+#include <stdbool.h>
 #include "cb_types.h"
 
 /**
@@ -10,8 +11,8 @@
 float eval(const cb_board_t *board);
 
 /**
- * Preforms an alphabeta move search on the position specified by board.
+ * Performs an iterative deepneing bestmove search.
  */
-cb_move_t alphabeta(cb_board_t *board);
+cb_move_t iterative_deepening(cb_board_t *board, bool *cancel_token);
 
 #endif /* CIBYL_EVAL_H */

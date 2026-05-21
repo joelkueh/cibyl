@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <sys/types.h>
 
 #include "cb_lib.h"
 #include "cb_dbg.h"
@@ -201,8 +202,7 @@ int main()
     cb_mvlst_t moves;
     cb_board_t board;
     cb_state_tables_t state;
-    char *command = NULL;
-    size_t len = 0;
+    char command[512];
     ssize_t nread;
     int result = 0;
     bool run_program = true;
@@ -236,16 +236,14 @@ int main()
 
     /* Accept commands from the user. */
     while (run_program) {
-        if ((nread = getline(&command, &len, stdin)) < 0) {
+        if (fgets(command, 512, stdin) == NULL) {
             perror("getline");
             result = 1;
-            goto out_free_command;
+            goto out_free_board;
         }
         run_program = parse_input(command, &board) >= 0;
     }
 
-out_free_command:
-    free(command);
 out_free_board:
     cb_board_free(&board);
 out_free_tables:
