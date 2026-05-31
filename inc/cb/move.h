@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "cb_const.h"
+#include "cb/const.h"
 
 /**
  * Enum holding the different flags that a move can contain

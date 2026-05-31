@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "cb_types.h"
+#include "cb/types.h"
 
 /**
  * @breif Enum defining directions of rays on the board.

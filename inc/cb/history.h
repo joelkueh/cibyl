@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <errno.h>
 
-#include "cb_const.h"
+#include "cb/const.h"
 
 /* The only way a game is longer than 1024 moves is if someone is doing something malicious.
  * Make strict guarantees about safety while also making things fast for default use. */

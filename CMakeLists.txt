@@ -17,11 +17,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 add_compile_options(-mavx2)
 
 set(BOARD_SOURCES
-	src/board/cb_const.c
-	src/board/cb_dbg.c
-	src/board/cb_gen.c
-	src/board/cb_magical.c
-	src/board/cb_normal.c
+	src/cb/const.c
+	src/cb/debug.c
+	src/cb/gen.c
+	src/cb/magical.c
+	src/cb/normal.c
+	src/cb/cb.c
 )
 
 # Create the engine executable.
@@ -31,10 +32,9 @@ add_executable(cibyl
 	src/uci.c
 	src/engine.c
 	src/eval.c
+	src/search.c
 )
 target_include_directories(cibyl
 	PRIVATE
 		${PROJECT_SOURCE_DIR}/inc
-		${PROJECT_SOURCE_DIR}/inc/board
-		${PROJECT_SOURCE_DIR}/inc/utils
 )

@@ -6,7 +6,7 @@
 
 static inline uint8_t peek_rbit(uint64_t bb)
 {
-#if __has_builtin (__builtin_ctzl)
+#if __has_builtin(__builtin_ctzl)
     return __builtin_ctzl(bb);
 #else
 #   error __builtin_ctzl not supported!
@@ -22,7 +22,7 @@ static inline uint8_t pop_rbit(uint64_t *bb)
 
 static inline uint8_t popcnt(uint64_t bb)
 {
-#if __has_builtin (__builtin_popcountl)
+#if __has_builtin(__builtin_popcountl)
     return __builtin_popcountl(bb);
 #else
 #   error __builtin_popcountl not supported!

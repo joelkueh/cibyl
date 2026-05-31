@@ -3,7 +3,7 @@
 #define CB_DEBUG_H
 
 #include <stdio.h>
-#include "cb_types.h"
+#include "types.h"
 
 /**
  * @breif Prints the move history stack.

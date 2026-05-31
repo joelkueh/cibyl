@@ -2,7 +2,7 @@
 #include <float.h>
 
 #include "eval.h"
-#include "cb_bitutil.h"
+#include "cb/bitutil.h"
 
 float piece_differential(const cb_board_t *board)
 {

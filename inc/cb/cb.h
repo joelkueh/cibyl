@@ -3,7 +3,8 @@
 #define CBLIB_H
 
 #include <stdbool.h>
-#include "cb_types.h"
+#include "cb/types.h"
+#include "log.h"
 
 /**
  * @breif Initializes a board. Note that this does not include move generation initalization.
@@ -11,14 +12,14 @@
  * @param board A pointer to the board to be initialized.
  * @return The error code corresponding to the error in err.
  */
-cb_errno_t cb_board_init(cb_error_t *err, cb_board_t *board);
+cibyl_errno_t cb_board_init(cibyl_error_t *err, cb_board_t *board);
 
 /**
  * @breif Initializes the move generation tables for a board.
  * @param err A pointer that will be populated with any errors.
  * @return True if this thread initialized the table, false otherwise.
  */
-cb_errno_t cb_tables_init(cb_error_t *err);
+cibyl_errno_t cb_tables_init(cibyl_error_t *err);
 
 /**
  * @breif Frees a board. Note that this does not clean up move generation tables.
@@ -38,7 +39,7 @@ void cb_tables_free();
  * @param fen The fen string to be parsed. This string will be modified by the function.
  * @return The error code corresponding to the error in err.
  */
-cb_errno_t cb_board_from_fen(cb_error_t *err, cb_board_t *board, char *fen);
+cibyl_errno_t cb_board_from_fen(cibyl_error_t *err, cb_board_t *board, char *fen);
 
 /**
  * @breif Populates a board from a fen string representation of a position.
@@ -47,7 +48,7 @@ cb_errno_t cb_board_from_fen(cb_error_t *err, cb_board_t *board, char *fen);
  * @param uci The uci fen string to be parsed. This string will be modified by the function.
  * @return The error code corresponding to the error in err.
  */
-cb_errno_t cb_board_from_uci(cb_error_t *err, cb_board_t *board, char *uci);
+cibyl_errno_t cb_board_from_uci(cibyl_error_t *err, cb_board_t *board, char *uci);
 
 /**
  * @breif Populates a board from a fen string representation of a position.
@@ -56,7 +57,16 @@ cb_errno_t cb_board_from_uci(cb_error_t *err, cb_board_t *board, char *uci);
  * @param pgn The pgn fen string to be parsed. This string will be modified by the function.
  * @return The error code corresponding to the error in err.
  */
-cb_errno_t cb_board_from_pgn(cb_error_t *err, cb_board_t *board, char *pgn);
+cibyl_errno_t cb_board_from_pgn(cibyl_error_t *err, cb_board_t *board, char *pgn);
+
+/**
+ * @brief Copies posiiton information from board src into board dest.
+ * @param err A pointer that will be populated with errors.
+ * @param dest A pointer to the destination board.
+ * @param src A pointer to the source board.
+ * @return The error code corresponding to the error in err.
+ */
+cibyl_errno_t cb_board_from_copy(cibyl_error_t *err, cb_board_t *dest, cb_board_t *src);
 
 /**
  * @breif Generates a move from a short algebraic string representation.
@@ -69,7 +79,7 @@ cb_errno_t cb_board_from_pgn(cb_error_t *err, cb_board_t *board, char *pgn);
  * @param algbr The algebraic-notation string representation of the move.
  * @return The error code corresponding to the error in err.
  */
-cb_errno_t cb_mv_from_short_algbr(cb_error_t *err, cb_move_t *mv, cb_board_t *board,
+cibyl_errno_t cb_mv_from_short_algbr(cibyl_error_t *err, cb_move_t *mv, cb_board_t *board,
                                   const char *algbr);
 
 /**
@@ -83,7 +93,7 @@ cb_errno_t cb_mv_from_short_algbr(cb_error_t *err, cb_move_t *mv, cb_board_t *bo
  * @param algbr The algebraic-notation string representation of the move.
  * @return The error code corresponding to the error in err.
  */
-cb_errno_t cb_mv_from_uci_algbr(cb_error_t *err, cb_move_t *mv, cb_board_t *board,
+cibyl_errno_t cb_mv_from_uci_algbr(cibyl_error_t *err, cb_move_t *mv, cb_board_t *board,
                                 const char *algbr);
 
 /**
@@ -115,7 +125,7 @@ void cb_gen_moves(cb_mvlst_t *mvlst, cb_board_t *board, cb_state_tables_t *state
  * @param added_depth The number of moves that must be made on top of the current position.
  * @return The error code corresponding to the error in err.
  */
-cb_errno_t cb_reserve_for_make(cb_error_t *err, cb_board_t *board, uint32_t added_depth);
+cibyl_errno_t cb_reserve_for_make(cibyl_error_t *err, cb_board_t *board, uint32_t added_depth);
 
 /**
  * @breif Makes a move on a board.

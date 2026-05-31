@@ -1,5 +1,7 @@
 
+#include "log.h"
 #include <pthread.h>
+#include <stdatomic.h>
 #ifdef _WIN32
 #define WIN_PIPE_SIZE 4096
 #include <io.h>
@@ -12,15 +14,18 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <eval.h>
+
 #include "engine.h"
+#include "search.h"
+#include "cb/cb.h"
 
 #define DEFAULT_FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 void eng_broadcast_exit(engine_t *eng)
 {
     pthread_mutex_lock(&eng->sync_lock);
-    eng->search_flag = false;
-    eng->exit_flag = true;
+    atomic_store_explicit(&eng->search_flag, false, memory_order_relaxed);
+    atomic_store_explicit(&eng->exit_flag, true, memory_order_relaxed);
     pthread_cond_broadcast(&eng->signal);
     pthread_cond_broadcast(&eng->ready);
     pthread_mutex_unlock(&eng->sync_lock);
@@ -29,17 +34,17 @@ void eng_broadcast_exit(engine_t *eng)
 void eng_broadcast_stop(engine_t *eng)
 {
     pthread_mutex_lock(&eng->sync_lock);
-    eng->search_flag = false;
+    atomic_store_explicit(&eng->search_flag, false, memory_order_relaxed);
     pthread_mutex_unlock(&eng->sync_lock);
 }
 
-cibyl_errno_t eng_start_search(engine_t *eng, const search_params_t *opts)
+cibyl_errno_t eng_start_search(cibyl_error_t *err, engine_t *eng, const search_params_t *opts)
 {
     cibyl_errno_t result = CIBYL_EOK;
 
     /* Prepare the engine if anything is not ready. */
-    if (eng_prepare(eng)) {
-        result = CIBYL_EABORT;
+    if (eng_prepare(err, eng) != CIBYL_EOK) {
+        result = CIBYL_ERR_ADD_CONTEXT(err);
         goto out;
     }
 
@@ -48,7 +53,7 @@ cibyl_errno_t eng_start_search(engine_t *eng, const search_params_t *opts)
     while (eng->waiting_threads < eng->nthinkers) {
         pthread_cond_wait(&eng->ready, &eng->sync_lock);
     }
-    eng->search_flag = true;
+    atomic_store_explicit(&eng->search_flag, true, memory_order_relaxed);
     eng->params = *opts;
     pthread_cond_broadcast(&eng->signal);
     pthread_mutex_unlock(&eng->sync_lock);
@@ -57,19 +62,58 @@ out:
     return result;
 }
 
-void eng_register_error(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, void *udata))
+/**
+ * @brief Reports an error in a thinker thread to the caller via the panic_fd.
+ *
+ * In UCI, this is necessary to get the calling thread to wake after an error
+ * occurs in the engine (potentially caused by a failed tablebase read or malloc
+ * failure when allocating the search stack).
+ *
+ * @param err An error struct containing any error information.
+ * @param eng The engine that this thinker belongs to.
+ */
+cibyl_errno_t thinker_report_error(cibyl_error_t *err, engine_t *eng)
 {
-    eng->report_error = report_fn;
+    int8_t byte = (int8_t)err->num;
+    if (write(eng->error_pipe[1], &byte, 1) != 1)
+        return CIBYL_MKERR(err, CIBYL_EABORT, "write: %s\n", strerror(errno));
+    return CIBYL_EOK;
 }
 
-void eng_register_best(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, void *udata))
+/**
+ * @brief Reports the bestmove found by the engine.
+ *
+ * Called by the last thinker thread to complete its search.
+ * In UCI, this bypasses the caller thread and writes directly to stdout.
+ * It seems a shame to have UCI functionality hard coded into the engine
+ * itself like this, but the added complexity of doing anything else isn't
+ * worth it.
+ *
+ * @param err An error struct containing any error information.
+ * @param eng The engine that this thinker belongs to.
+ */
+cibyl_errno_t thinker_report_bestmove(cibyl_error_t *err, engine_t *eng, cb_move_t best)
 {
-    eng->report_best = report_fn;
+    char buf[6];
+    cb_mv_to_uci_algbr(buf, eng->bestmove);
+    printf("bestmove %s\n", buf);
+    return CIBYL_EOK;
 }
 
-void eng_register_info(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, void *udata))
+/**
+ * @brief Reports generic info from a thinker thread.
+ *
+ * Like with the bestmove report function, this is hardcoded to support
+ * UCI and bypasses the caller thread. I'm over it now.
+ *
+ * @param err An error struct containing any error information.
+ * @param eng The engine that this thinker belongs to.
+ */
+cibyl_errno_t thinker_report_info(cibyl_error_t *err, engine_t *eng)
 {
-    eng->report_info = report_fn;
+    /* TODO: Implement me. */
+    printf("Info!\n");
+    return CIBYL_EOK;
 }
 
 /**
@@ -82,10 +126,9 @@ void eng_register_info(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, 
  * @param format A printf compliant format string.
  * @param ... All remaining arguments passed into the format string.
  */
-void thinker_error(engine_t *eng, char *format, ...)
+cibyl_error_t thinker_error(cibyl_error_t *err, engine_t *eng, char *format, ...)
 {
     va_list args;
-    eng_broadcast_exit(eng);
     va_start(args, format);
     cibyl_vwrite_log(format, args);
     va_end(args);
@@ -96,27 +139,35 @@ void thinker_error(engine_t *eng, char *format, ...)
     }
 }
 
-void thinker_search(thinker_t *tk)
+cibyl_errno_t thinker_search(cibyl_error_t *err, thinker_t *tk)
 {
-    /* TODO: Load the position into the internal board. */
+    cibyl_errno_t result = CIBYL_EOK;
 
-    /* TODO: Complete the search. */
-    tk->eng->bestmove = iterative_deepening(tk->eng->board, &tk->eng->search_flag);
+    /* Load the position into the internal board. */
+    if (cb_board_from_copy(err, &tk->board, tk->eng->board) != CIBYL_EOK) {
+        result = CIBYL_ERR_ADD_CONTEXT(err);
+        goto out;
+    }
 
-    /* TODO: Collect the results? Maybe leave that to the report handler? */
+    /* Complete the search. */
+    if (iterative_deepening(err, &tk->eng->bestmove, tk->eng, &tk->board) != CIBYL_EOK) {
+        result = CIBYL_ERR_ADD_CONTEXT(err);
+        goto out;
+    }
+
+out:
+    return result;
 }
 
 void *thinker_entry(void *thinker_args)
 {
     thinker_t *tk = (thinker_t *)thinker_args;
     cibyl_errno_t result = CIBYL_EOK;
-    cb_error_t cb_error;
-    cb_errno_t cb_errno;
+    cibyl_error_t err;
 
     /* Allocate a board to search on. */
-    if (cb_board_init(&cb_error, &tk->board) != CB_EOK) {
-        cibyl_write_log("cb_board_init: %s\n", cb_error.desc);
-        result = CIBYL_EABORT;
+    if (cb_board_init(&err, &tk->board) != CIBYL_EOK) {
+        result = CIBYL_WRITE_ERR(&err);
         goto out;
     }
 
@@ -133,17 +184,21 @@ void *thinker_entry(void *thinker_args)
         tk->eng->active_threads += 1;
         pthread_mutex_unlock(&tk->eng->sync_lock);
 
-        /* Jump into the search loop. */
-        thinker_search(tk);
-
         /* Don't report if the exit flag is active. */
-        if (tk->eng->exit_flag)
+        if (atomic_load_explicit(&tk->eng->exit_flag, memory_order_relaxed))
             break;
+
+        /* Jump into the search loop. */
+        if (thinker_search(&err, tk) != CIBYL_EOK) {
+            result = CIBYL_WRITE_ERR(&err);
+            goto out;
+        }
 
         /* The last thread should send results back to the caller. */
         if (atomic_fetch_add(&tk->eng->active_threads, -1) == 1) {
             if (tk->eng->report_best(tk->eng, tk->eng->udata)) {
-                cibyl_write_log("report_best failed");
+                result = CIBYL_WRITE_ERR(&err);
+                goto out;
             }
         }
     }
@@ -152,6 +207,12 @@ void *thinker_entry(void *thinker_args)
     cb_board_free(&tk->board);
 
 out:
+    /* If there was an error, set the exit flag and signal the caller. */
+    if (result != CIBYL_EOK) {
+        eng_broadcast_exit(tk->eng);
+        thinker_report_error(NULL, tk->eng);
+    }
+
     return (void*)result;
 }
 
@@ -160,21 +221,19 @@ void eng_newgame(engine_t *eng)
     // TODO: Reset the ttable and stuff when I actually implement this.
 }
 
-cibyl_errno_t eng_set_ucifen(engine_t *eng, char *fen)
+cibyl_errno_t eng_set_ucifen(cibyl_error_t *err, engine_t *eng, char *fen)
 {
     cibyl_errno_t result = CIBYL_EOK;
-    cb_error_t cb_err;
-    cb_errno_t cb_errno;
 
     /* This may require the board to be initialized. */
-    if (eng_prepare(eng)) {
-        result = CIBYL_EABORT;
+    if (eng_prepare(err, eng) != CIBYL_EOK) {
+        result = CIBYL_ERR_ADD_CONTEXT(err);
         goto out;
     }
 
     /* Initialize the board according to the ucifen string. */
-    if ((cb_errno = cb_board_from_fen(&cb_err, eng->board, fen)) == CB_EOK) {
-        cibyl_write_log("cb_board_from_fen: %s\n", cb_err);
+    if (cb_board_from_fen(err, eng->board, fen) != CIBYL_EOK) {
+        CIBYL_ERR_ADD_CONTEXT(err);
         result = CIBYL_EABORT;
         goto out;
     }
@@ -197,36 +256,60 @@ void eng_init(engine_t *eng)
 
     /* Set up sane defaults for hash size (TODO) and thread pool count. */
     eng->nthinkers = 1;
+
+    /* Mark the error pipe as uninitialized. */
+#ifdef _WIN32
+    /* TODO: Implement for windows. */
+#else
+    eng->error_pipe[0] = -1;
+    eng->error_pipe[1] = -1;
+#endif
 }
 
-cibyl_errno_t eng_prepare_board(engine_t *eng)
+cibyl_errno_t eng_prepare_pipe(cibyl_error_t *err, engine_t *eng)
+{
+    cibyl_errno_t result = CIBYL_EOK;
+
+    /* Create the panic notification pipe. */
+#ifdef _WIN32
+    if (CreatePipe(&eng->h_msg_read, &hWritePipe->h_msg_write, NULL, WIN_PIPE_SIZE)
+        result = CIBYL_MKERR(err, CIBYL_EABORT, "CreatePipe: %s\n", _strerror(NULL));
+#else
+    if (pipe(eng->error_pipe) == -1)
+        result = CIBYL_MKERR(err, CIBYL_EABORT, "pipe: %s\n", strerror(NULL));
+#endif
+
+    return result;
+}
+
+void eng_cleanup_pipe(engine_t *eng)
+{
+    close(eng->error_pipe[0]);
+    close(eng->error_pipe[1]);
+}
+
+cibyl_errno_t eng_prepare_board(cibyl_error_t *err, engine_t *eng)
 {
     cibyl_errno_t result = CIBYL_EOK;
     char fen[] = DEFAULT_FEN;
-    cb_error_t cb_error;
-    cb_errno_t cb_errno;
 
     if ((eng->board = (cb_board_t*)malloc(sizeof(cb_board_t))) == NULL) {
-        cibyl_write_log("malloc: %s\n", strerror(errno));
-        result = CIBYL_ENOMEM;
+        result = CIBYL_MKERR(err, CIBYL_ENOMEM, "malloc: %s\n", strerror(errno));
         goto out;
     }
 
-    if ((cb_errno = cb_tables_init(&cb_error)) != CB_EOK) {
-        cibyl_write_log("cb_board_init: %s\n", cb_error.desc);
-        result = CIBYL_EABORT;
+    if (cb_tables_init(err) != CIBYL_EOK) {
+        result = CIBYL_ERR_ADD_CONTEXT(err);
         goto err_deinit_board;
     }
 
-    if ((cb_errno = cb_board_init(&cb_error, eng->board)) != CB_EOK) {
-        cibyl_write_log("cb_board_init: %s\n", cb_error.desc);
-        result = CIBYL_EABORT;
+    if (cb_board_init(err, eng->board) != CIBYL_EOK) {
+        result = CIBYL_ERR_ADD_CONTEXT(err);
         goto err_free_board;
     }
 
-    if ((cb_errno = cb_board_from_fen(&cb_error, eng->board, fen)) != CB_EOK) {
-        cibyl_write_log("cb_board_from_fen: %s\n", cb_error.desc);
-        result = CIBYL_EABORT;
+    if (cb_board_from_fen(err, eng->board, fen) != CIBYL_EOK) {
+        result = CIBYL_ERR_ADD_CONTEXT(err);
         goto err_deinit_board;
     }
 
@@ -285,8 +368,8 @@ cibyl_errno_t eng_prepare_thinkers(engine_t *eng)
     pthread_mutex_init(&eng->sync_lock, NULL);
     pthread_cond_init(&eng->signal, NULL);
     pthread_cond_init(&eng->ready, NULL);
-    eng->exit_flag = false;
-    eng->search_flag = false;
+    atomic_store_explicit(&eng->exit_flag, false, memory_order_relaxed);
+    atomic_store_explicit(&eng->search_flag, false, memory_order_relaxed);
     eng->waiting_threads = 0;
     eng->active_threads = 0;
 
@@ -305,7 +388,7 @@ cibyl_errno_t eng_prepare_thinkers(engine_t *eng)
     }
 
     goto out;
-
+eng
 err_join:
     eng_broadcast_exit(eng);
     for (; i > 0; i--) {
@@ -334,25 +417,31 @@ void eng_cleanup_thinkers(engine_t *eng)
     pthread_mutex_destroy(&eng->sync_lock);
 }
 
-cibyl_errno_t eng_prepare(engine_t *eng)
+cibyl_errno_t eng_prepare(cibyl_error_t *err, engine_t *eng)
 {
     cibyl_errno_t result = CIBYL_EOK;
+
+    /* Initialize the error pipe. */
+    if (eng->error_pipe[0] == -1 && eng_prepare_pipe(err, eng)) {
+        result = CIBYL_ERR_ADD_CONTEXT(err);
+        goto err;
+    }
     
     /* Potentially initialize the board and move tables. */
-    if (eng->board == NULL && (result = eng_prepare_board(eng)) != CIBYL_EOK) {
-        result = CIBYL_EABORT;
+    if (eng->board == NULL && eng_prepare_board(err, eng) != CIBYL_EOK) {
+        result = CIBYL_ERR_ADD_CONTEXT(err);
         goto err;
     }
 
     /* Potentially initialize the ttable. */
-    if (eng->ttable == NULL && (result = eng_prepare_ttable(eng)) != CIBYL_EOK) {
-        result = CIBYL_EABORT;
+    if (eng->ttable == NULL && eng_prepare_ttable(eng) != CIBYL_EOK) {
+        result = CIBYL_ERR_ADD_CONTEXT(err);
         goto err;
     }
 
     /* Potentially inititialize the thread pool. */
-    if (eng->thinkers == NULL && (result = eng_prepare_thinkers(eng)) != CIBYL_EOK) {
-        result = CIBYL_EABORT;
+    if (eng->thinkers == NULL && eng_prepare_thinkers(eng) != CIBYL_EOK) {
+        result = CIBYL_ERR_ADD_CONTEXT(err);
         goto err;
     }
 

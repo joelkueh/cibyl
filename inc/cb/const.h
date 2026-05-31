@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 
-#include "cb_types.h"
+#include "cb/types.h"
 
 #define ENEMY_COLOR(c) (!c)
 

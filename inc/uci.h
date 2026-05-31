@@ -48,10 +48,6 @@ typedef struct {
     bool debug;        /**< Whether or not the engine is in debug mode. */
     bool initialized;  /**< Flag for whether or not the engine has been initialized. */
     bool exit;         /**< Flag for whether the engine should exit. */
-#ifdef _WIN32
-#else
-    int error_pipe[2]; /**< Pipe for the thread pool to report errors on. */
-#endif
 } uci_engine_t;
 
 /**
@@ -59,14 +55,14 @@ typedef struct {
  * @param engine The engine to initialize.
  * @return An error code for any failed system calls.
  */
-cibyl_errno_t uci_init(uci_engine_t *eng);
+void uci_init(uci_engine_t *eng);
 
 /**
  * @brief Main loop for the UCI chess engine. Forwards UCI commands to the engine.
  * @param engine The engine to process.
  * @return An error code for any failed system calls.
  */
-cibyl_errno_t uci_process(uci_engine_t *eng);
+cibyl_errno_t uci_process(cibyl_error_t *err, uci_engine_t *eng);
 
 /**
  * @brief Performs cleanup on an instance of a UCI chess engine.

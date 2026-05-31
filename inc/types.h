@@ -7,26 +7,6 @@
 #include <stdio.h>
 
 #define CB_MAX_NUM_MOVES 218
-#define CB_ERROR_STRLEN 128
-
-/**
- * @breif Error codes for different operations that can take place.
- */
-typedef enum {
-    CB_ENOMEM = -2,     /**< Non-recoverable error for malloc failures. */
-    CB_EABORT = -1,     /**< Generic non-recoverable error. */
-    CB_EOK = 0,         /**< Default return value. */
-    CB_EINVAL,          /**< Recoverable invalid formatting error. */
-    CB_EILLEGAL,        /**< Recoverable illegal move specification error. */
-} cb_errno_t;
-
-/**
- * @breif Defines an error type for errors that will be returned by the library.
- */
-typedef struct {
-    cb_errno_t num;                 /**< The error code for the error. */
-    char desc[CB_ERROR_STRLEN];     /**< A string description of the error. */
-} cb_error_t;
 
 /**
  * @breif Enumerates board piece and turn colors.
@@ -163,23 +143,6 @@ typedef struct {
     uint8_t turn;           /**< The current turn. */
     uint32_t fullmove_num;  /**< The fullmove number. */
 } cb_board_t;
-
-/**
- * @breif Function that creates populates an error struct with error information.
- * @param err The error struct to populate.
- * @param cb_errno The error number.
- * @param format A printf compliant format string.
- * @param ... All remaining arguments passed into the format string.
- */
-static cb_errno_t cb_mkerr(cb_error_t *err, cb_errno_t cb_errno, char *format, ...)
-{
-    va_list args;
-    err->num = cb_errno;
-    va_start(args, format);
-    vsnprintf(err->desc, CB_ERROR_STRLEN, format, args);
-    va_end(args);
-    return cb_errno;
-}
 
 #endif /* CB_TYPES_H */
 

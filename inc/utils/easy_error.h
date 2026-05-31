@@ -1,0 +1,9 @@
+
+
+
+
+#ifdef EASY_LOG_IMPLEMENTATION
+
+
+
+#endif /* EASY_LOG_IMPLEMENT */

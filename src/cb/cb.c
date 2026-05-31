@@ -668,3 +668,19 @@ cibyl_errno_t cb_board_from_pgn(cibyl_error_t *err, cb_board_t *board, char *fen
     return 0;
 }
 
+cibyl_errno_t cb_board_from_copy(cibyl_error_t *err, cb_board_t *dest, cb_board_t *src)
+{
+    cibyl_errno_t result = CIBYL_EOK;
+
+    memcpy(dest, src, sizeof(cb_board_t));
+    dest->hist.data = (cb_hist_ele_t*)malloc(dest->hist.size * sizeof(cb_hist_ele_t));
+    if (dest->hist.data == NULL) {
+        result = CIBYL_MKERR(err, CIBYL_ENOMEM, "malloc: %s\n", strerror(errno));
+        goto out;
+    }
+    memcpy(dest->hist.data, src->hist.data, dest->hist.count * sizeof(cb_hist_ele_t));
+
+out:
+    return result;
+}
+

@@ -5,8 +5,9 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "cibyl.h"
+#include "cb/cb.h"
 #include "uci.h"
+#include "log.h"
 
 const size_t MAX_COMMAND_LEN = 4096;
 
@@ -68,9 +69,9 @@ cibyl_errno_t uci_report_info(engine_t *eng, void *udata)
     return CIBYL_EOK;
 }
 
-cibyl_errno_t handle_position(uci_engine_t *eng, char *opts)
+cibyl_errno_t handle_position(cibyl_error_t *err, uci_engine_t *eng, char *opts)
 {
-    return eng_set_ucifen(&eng->eng, opts);
+    return eng_set_ucifen(err, &eng->eng, opts);
 }
 
 cibyl_errno_t handle_searchmoves(char *moves)
@@ -79,24 +80,22 @@ cibyl_errno_t handle_searchmoves(char *moves)
     return CIBYL_EABORT;
 }
 
-cibyl_errno_t parse_i64(char *token, int64_t *out)
+cibyl_errno_t parse_i64(cibyl_error_t *err, char *token, int64_t *out)
 {
     char *endp;
 
     if (token == NULL && *token == '\0') {
-        cibyl_write_log("parse_i64: valid string expected\n");
-        return CIBYL_EABORT;
+        return CIBYL_MKERR(err, CIBYL_EINVAL, "parse_i64: string expected\n");
     }
     *out = strtoll(token, &endp, 10);
     if (*endp != '\0') {
-        cibyl_write_log("parse_i64: token is not an integer\n");
-        return CIBYL_EABORT;
+        return CIBYL_MKERR(err, CIBYL_EINVAL, "parse_i64: token is not an integer\n");
     }
     
     return CIBYL_EOK;
 }
 
-cibyl_errno_t handle_go(uci_engine_t *eng, char *opts)
+cibyl_errno_t handle_go(cibyl_error_t *err, uci_engine_t *eng, char *opts)
 {
     typedef enum {
         GO_SEARCHMOVES,
@@ -157,34 +156,34 @@ cibyl_errno_t handle_go(uci_engine_t *eng, char *opts)
 
         /* Handle time information. */
         else if (strcmp(token, STR_GO_WTIME) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.wtime) < 0)
+            if (parse_i64(err, strtok(opts, STR_UCI_DELIMS), &search_params.wtime) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_BTIME) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.btime) < 0)
+            if (parse_i64(err, strtok(opts, STR_UCI_DELIMS), &search_params.btime) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_WINC) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.winc) < 0)
+            if (parse_i64(err, strtok(opts, STR_UCI_DELIMS), &search_params.winc) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_BINC) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.binc) < 0)
+            if (parse_i64(err, strtok(opts, STR_UCI_DELIMS), &search_params.binc) < 0)
                 return CIBYL_EABORT;
         }
 
         /* Handle move stopping. */
         else if (strcmp(token, STR_GO_MOVESTOGO) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.movestogo) < 0)
+            if (parse_i64(err, strtok(opts, STR_UCI_DELIMS), &search_params.movestogo) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_DEPTH) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.depth) < 0)
+            if (parse_i64(err, strtok(opts, STR_UCI_DELIMS), &search_params.depth) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_NODES) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.nodes) < 0)
+            if (parse_i64(err, strtok(opts, STR_UCI_DELIMS), &search_params.nodes) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_MATE) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.mate) < 0)
+            if (parse_i64(err, strtok(opts, STR_UCI_DELIMS), &search_params.mate) < 0)
                 return CIBYL_EABORT;
         } else if (strcmp(token, STR_GO_MOVETIME) == 0) {
-            if (parse_i64(strtok(opts, STR_UCI_DELIMS), &search_params.movetime) < 0)
+            if (parse_i64(err, strtok(opts, STR_UCI_DELIMS), &search_params.movetime) < 0)
                 return CIBYL_EABORT;
         }
 
@@ -194,7 +193,7 @@ cibyl_errno_t handle_go(uci_engine_t *eng, char *opts)
 
 search:
     /* Start thinking. */
-    if (eng_start_search(&eng->eng, &search_params)) {
+    if (eng_start_search(err, &eng->eng, &search_params)) {
         return CIBYL_EABORT;
     }
 
@@ -206,7 +205,7 @@ void hanlde_display()
 
 }
 
-cibyl_errno_t handle_cmd(uci_engine_t *eng, char *cmd)
+cibyl_errno_t handle_cmd(cibyl_error_t *err, uci_engine_t *eng, char *cmd)
 {
     cibyl_errno_t result = CIBYL_EOK;
 
@@ -227,7 +226,11 @@ cibyl_errno_t handle_cmd(uci_engine_t *eng, char *cmd)
             eng->debug = true;
         } else if (strcmp(cmd, STR_ISREADY) == 0) {
             /* Wait for the engine to be ready to process input. */
-            eng_prepare(&eng->eng);
+            if (eng_prepare(err, &eng->eng) != CIBYL_EOK) {
+                CIBYL_ERR_ADD_CONTEXT(err);
+                result = CIBYL_EABORT;
+                goto err;
+            }
             printf("readyok\n");
         } else if (strcmp(cmd, STR_SETOPTION) == 0) {
             /* TODO: Implement me. */
@@ -237,15 +240,22 @@ cibyl_errno_t handle_cmd(uci_engine_t *eng, char *cmd)
 
         /* Board setup commands. */
         else if (strcmp(cmd, STR_UCINEWGAME) == 0) {
-            /* TODO: Implement me. */
-            eng_set_ucifen(&eng->eng, "startpos");
+            if (eng_set_ucifen(err, &eng->eng, "startpos") != CIBYL_EOK) {
+                CIBYL_ERR_ADD_CONTEXT(err);
+                result = CIBYL_EABORT;
+                goto err;
+            }
         } else if (strcmp(cmd, STR_POSITION) == 0) {
-            eng_set_ucifen(&eng->eng, strtok(cmd, "\n"));
+            if (eng_set_ucifen(err, &eng->eng, strtok(cmd, "\n")) != CIBYL_EOK) {
+                CIBYL_ERR_ADD_CONTEXT(err);
+                result = CIBYL_EABORT;
+                goto err;
+            }
         }
 
         /* Functions for controlling thinking. */
         else if (strcmp(cmd, STR_GO) == 0) {
-            result = handle_go(eng, strtok(NULL, ""));   /* Slice off the rest of the cmd. */
+            result = handle_go(err, eng, strtok(NULL, ""));
         } else if (strcmp(cmd, STR_STOP) == 0) {
             eng_broadcast_stop(&eng->eng);
         } else if (strcmp(cmd, STR_PONDERHIT) == 0) {
@@ -266,62 +276,30 @@ cibyl_errno_t handle_cmd(uci_engine_t *eng, char *cmd)
         }
     }
 
+err:
     return result;
 }
 
-cibyl_errno_t uci_init(uci_engine_t *eng)
+void uci_init(uci_engine_t *eng)
 {
-    int result = CIBYL_EOK;
-
-    /* Create the panic notification pipe. */
-#ifdef _WIN32
-    if (CreatePipe(&eng->h_msg_read, &hWritePipe->h_msg_write, NULL, WIN_PIPE_SIZE) {
-        cibyl_write_log("CreatePipe: %s\n", _strerror(NULL));
-        result = CIBYL_EABORT;
-        goto out;
-    }
-#else
-    if (pipe(eng->error_pipe) == -1) {
-        cibyl_write_log("pipe: %s\n", strerror(errno));
-        result = CIBYL_EABORT;
-        goto out;
-    }
-#endif
-
     /* Set the engine as uninitialized. */
     eng->debug = false;
     eng->initialized = false;
     eng->exit = false;
 
-    /* Register the handler functions for the different engine reports. */
-    eng_register_error(&eng->eng, uci_report_error);
-    eng_register_best(&eng->eng, uci_report_bestmove);
-    eng_register_info(&eng->eng, uci_report_info);
-
     /* Bring the underlying engine to a sane state. */
     eng_init(&eng->eng);
-
-err_close_pipe:
-#ifdef _WIN32
-    CloseHandle(eng->h_msg_read)):
-    CloseHandle(eng->h_msg_write));
-#else
-    close(eng->error_pipe[0]);
-    close(eng->error_pipe[1]);
-#endif
-
-out:
-    return result;
 }
 
-cibyl_errno_t uci_process(uci_engine_t *eng)
+cibyl_errno_t uci_process(cibyl_error_t *err, uci_engine_t *eng)
 {
     char cmd[MAX_COMMAND_LEN];
 
     /* TODO: Use select to wait for data from multiple fds.
      * This isn't a big deal until threads can throw errors (tablebase reads). */
     while (!eng->exit && fgets(cmd, MAX_COMMAND_LEN, stdin) != NULL) {
-        if (handle_cmd(eng, cmd)) {
+        if (handle_cmd(err, eng, cmd)) {
+            CIBYL_ERR_ADD_CONTEXT(err);
             return CIBYL_EABORT;
         }
     }
@@ -332,15 +310,6 @@ cibyl_errno_t uci_process(uci_engine_t *eng)
 
 void uci_deinit(uci_engine_t *eng)
 {
-    /* Close the panic notification pipe. */
-#ifdef _WIN32
-    CloseHandle(eng->h_msg_read)):
-    CloseHandle(eng->h_msg_write));
-#else
-    close(eng->error_pipe[0]);
-    close(eng->error_pipe[1]);
-#endif
-
     /* Deinitialize the engine. */
     eng_deinit(&eng->eng);
 }

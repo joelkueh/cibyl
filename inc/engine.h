@@ -10,8 +10,8 @@
 #include <namedpipeapi.h>
 #endif
 
-#include "cb_move.h"
-#include "cibyl.h"
+#include "cb/move.h"
+#include "log.h"
 
 #define DEFAULT_POOL_SIZE 1
 
@@ -72,7 +72,7 @@ struct engine {
     int waiting_threads;       /**< Number of threads waiting on the lock. */
     atomic_int active_threads; /**< Number of threads currently searching. */
     atomic_bool search_flag;   /**< Checked by thinkers to see if they should search. */
-    bool exit_flag;            /**< Checked by the thinkers to see if they should shut down. */
+    atomic_bool exit_flag;     /**< Checked by the thinkers to see if they should shut down. */
     
     /* Function pointers for data reporting. */
     void *udata;                                               /**< User data for handlers. */
@@ -80,6 +80,13 @@ struct engine {
     cibyl_errno_t (*report_best)(engine_t *eng, void *udata);  /**< Bestmove handler. */
     cibyl_errno_t (*report_info)(engine_t *eng, void *udata);  /**< Info handler. */
     cb_move_t bestmove; /**< TODO: Remove. */
+
+    /* Error reporting pipe. */
+#ifdef _WIN32
+    /* TODO: Implement for windows. */
+#else
+    int error_pipe[2]; /**< Pipe for the thread pool to report errors on. */
+#endif
 };
 
 /**
@@ -121,7 +128,7 @@ void eng_init(engine_t *eng);
  * @param eng The engine to prepare.
  * @return An error code for any failed calls.
  */
-cibyl_errno_t eng_prepare(engine_t *eng);
+cibyl_errno_t eng_prepare(cibyl_error_t *err, engine_t *eng);
 
 /**
  * @brief Deinitializes the engine struct.
@@ -131,27 +138,6 @@ cibyl_errno_t eng_prepare(engine_t *eng);
  * @param eng The engine to deinitialize.
  */
 void eng_deinit(engine_t *eng);
-
-/**
- * @brief Registers an error reporting function for the engine.
- * @param eng The engine to update.
- * @param report_fn The report function to register.
- */
-void eng_register_error(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, void *udata));
-
-/**
- * @brief Registers a bestmove reporting function for the engine.
- * @param eng The engine to update.
- * @param report_fn The report function to register.
- */
-void eng_register_best(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, void *udata));
-
-/**
- * @brief Registers an info reporting function for the engine.
- * @param eng The engine to update.
- * @param report_fn The report function to register.
- */
-void eng_register_info(engine_t *eng, cibyl_errno_t (*report_fn)(engine_t *eng, void *udata));
 
 /**
  * @breif Nicely frees all allocated memory and terminates threads.
@@ -171,14 +157,14 @@ void eng_newgame(engine_t *eng);
  * @param engine The engine in question.
  * @return An error code for any errors in initialization.
  */
-cibyl_errno_t eng_set_ucifen(engine_t *eng, char *fen);
+cibyl_errno_t eng_set_ucifen(cibyl_error_t *err, engine_t *eng, char *fen);
 
 /**
  * @breif Notifies the engine that it should begin a search.
  * @param eng The engine to notify.
  * @param opts The options for the search.
  */
-cibyl_errno_t eng_start_search(engine_t *eng, const search_params_t *opts);
+cibyl_errno_t eng_start_search(cibyl_error_t *err, engine_t *eng, const search_params_t *opts);
 
 /**
  * @brief Signals that all threads should terminate.
