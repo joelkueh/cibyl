@@ -194,7 +194,7 @@ cibyl_errno_t handle_go(cibyl_error_t *err, uci_engine_t *eng, char *opts)
 search:
     /* Start thinking. */
     if (eng_start_search(err, &eng->eng, &search_params)) {
-        return CIBYL_EABORT;
+        return CIBYL_ERR_ADD_CONTEXT(err);
     }
 
     return CIBYL_EOK;

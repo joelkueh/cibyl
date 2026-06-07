@@ -75,10 +75,6 @@ struct engine {
     atomic_bool exit_flag;     /**< Checked by the thinkers to see if they should shut down. */
     
     /* Function pointers for data reporting. */
-    void *udata;                                               /**< User data for handlers. */
-    cibyl_errno_t (*report_error)(engine_t *eng, void *udata); /**< Error handler. */
-    cibyl_errno_t (*report_best)(engine_t *eng, void *udata);  /**< Bestmove handler. */
-    cibyl_errno_t (*report_info)(engine_t *eng, void *udata);  /**< Info handler. */
     cb_move_t bestmove; /**< TODO: Remove. */
 
     /* Error reporting pipe. */

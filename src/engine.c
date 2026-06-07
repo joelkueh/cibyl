@@ -116,29 +116,6 @@ cibyl_errno_t thinker_report_info(cibyl_error_t *err, engine_t *eng)
     return CIBYL_EOK;
 }
 
-/**
- * @breif Handles errors in a thinker thread.
- *
- * Signals all other theads to exit, notifies the caller,
- * and writes a message to the log (often stderr).
- *
- * @param eng The engine that the thinker belongs to.
- * @param format A printf compliant format string.
- * @param ... All remaining arguments passed into the format string.
- */
-cibyl_error_t thinker_error(cibyl_error_t *err, engine_t *eng, char *format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    cibyl_vwrite_log(format, args);
-    va_end(args);
-    if (eng->report_error != NULL) {
-        if (eng->report_error(eng, eng->udata)) {
-            cibyl_write_log("report_error failed\n");
-        }
-    }
-}
-
 cibyl_errno_t thinker_search(cibyl_error_t *err, thinker_t *tk)
 {
     cibyl_errno_t result = CIBYL_EOK;
@@ -196,7 +173,7 @@ void *thinker_entry(void *thinker_args)
 
         /* The last thread should send results back to the caller. */
         if (atomic_fetch_add(&tk->eng->active_threads, -1) == 1) {
-            if (tk->eng->report_best(tk->eng, tk->eng->udata)) {
+            if (thinker_report_bestmove(&err, tk->eng, tk->eng->bestmove)) {
                 result = CIBYL_WRITE_ERR(&err);
                 goto out;
             }
@@ -276,7 +253,7 @@ cibyl_errno_t eng_prepare_pipe(cibyl_error_t *err, engine_t *eng)
         result = CIBYL_MKERR(err, CIBYL_EABORT, "CreatePipe: %s\n", _strerror(NULL));
 #else
     if (pipe(eng->error_pipe) == -1)
-        result = CIBYL_MKERR(err, CIBYL_EABORT, "pipe: %s\n", strerror(NULL));
+        result = CIBYL_MKERR(err, CIBYL_EABORT, "pipe: %s\n", strerror(errno));
 #endif
 
     return result;
@@ -388,7 +365,7 @@ cibyl_errno_t eng_prepare_thinkers(engine_t *eng)
     }
 
     goto out;
-eng
+
 err_join:
     eng_broadcast_exit(eng);
     for (; i > 0; i--) {
@@ -451,6 +428,13 @@ err:
 
 void eng_deinit(engine_t *eng)
 {
+    /* Potentially cleanup the error pipe. */
+    if (eng->error_pipe[0] != -1) {
+        eng_cleanup_pipe(eng);
+        eng->error_pipe[0] = -1;
+        eng->error_pipe[1] = -1;
+    }
+
     /* Potentially cleanup the thread pool. */
     if (eng->thinkers != NULL) {
         eng_cleanup_thinkers(eng);

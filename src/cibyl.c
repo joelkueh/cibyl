@@ -32,11 +32,7 @@ int main(int argc, char *argv[])
     }
 
     /* Initialize the engine. */
-    if (uci_init(&err, &eng)) {
-        CIBYL_WRITE_ERR(&err);
-        result = 1;
-        goto out;
-    };
+    uci_init(&eng);
 
     /* Initialize the engine and begin processing messages. */
     if (uci_process(&err, &eng)) {
