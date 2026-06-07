@@ -1,7 +1,7 @@
 
 #include <float.h>
 
-#include "eval.h"
+#include "cb/eval.h"
 #include "cb/bitutil.h"
 
 const int MG_PAWN_TABLE[64] = {
@@ -159,6 +159,15 @@ const int *EG_PESTO_TABLE[6] =
 int gamephaseInc[12] = {0,0,1,1,1,1,2,2,4,4,0,0};
 int mg_table[12][64];
 int eg_table[12][64];
+
+void pesto_init()
+{
+    cb_ptype_t ptype = CB_PTYPE_PAWN;
+    cb_pid_t pid = CB_PID_WHITE_PAWN;
+    int sq;
+
+    for (;
+}
 
 float piece_differential(const cb_board_t *board)
 {
