@@ -4,7 +4,7 @@
 #include "engine.h"
 #include "cb/cb.h"
 #include "cb/move.h"
-#include "eval.h"
+#include "cb/eval.h"
 #include <stdatomic.h>
 
 #define ALPHA_BETA_MAX_DEPTH 30
@@ -14,7 +14,7 @@
 
 /* This is just a minimax search for now. I'll flesh it out into alphabeta later. */
 cibyl_errno_t searching(cibyl_error_t *err, float *evaluation,
-                        engine_t *eng, cb_board_t *board, cb_state_tables_t *state, int depth)
+                        engine_t *eng, cb_board_t *board, int depth)
 {
     cibyl_errno_t result = CIBYL_EOK;
     cb_mvlst_t mvlst;
@@ -31,8 +31,7 @@ cibyl_errno_t searching(cibyl_error_t *err, float *evaluation,
     }
 
     /* Make moves down the tree. */
-    cb_gen_board_tables(state, board);
-    cb_gen_moves(&mvlst, board, state);
+    cb_gen_moves(&mvlst, board);
     for (i = 0; i < cb_mvlst_size(&mvlst); i++) {
         /* Check the search flag to see if we should stop. */
         if (!atomic_load_explicit(&eng->search_flag, memory_order_relaxed)) {
@@ -44,7 +43,7 @@ cibyl_errno_t searching(cibyl_error_t *err, float *evaluation,
         /* Make another move and explore the search tree recursively. */
         mv = cb_mvlst_at(&mvlst, i);
         cb_make(board, mv);
-        current_eval = searching(err, &current_eval, eng, board, state, depth - 1);
+        current_eval = searching(err, &current_eval, eng, board, depth - 1);
         value = board->turn ? MAX(current_eval, value) : MIN(current_eval, value);
         cb_unmake(board);
     }
@@ -58,7 +57,6 @@ cibyl_errno_t alphabeta(cibyl_error_t *err, cb_move_t *bestmove,
                         engine_t *eng, cb_board_t *board, int base_depth)
 {
     cibyl_errno_t result = CIBYL_EOK;
-    cb_state_tables_t state;
     cb_mvlst_t mvlst;
     cb_move_t current_bestmove;
     cb_move_t mv;
@@ -80,8 +78,7 @@ cibyl_errno_t alphabeta(cibyl_error_t *err, cb_move_t *bestmove,
     }
 
     /* Start the alpha-beta search. */
-    cb_gen_board_tables(&state, board);
-    cb_gen_moves(&mvlst, board, &state);
+    cb_gen_moves(&mvlst, board);
     for (i = 0; i < cb_mvlst_size(&mvlst); i++) {
         /* Check the atomic stop flag. */
         if (!atomic_load_explicit(&eng->search_flag, memory_order_relaxed)) {
@@ -92,7 +89,7 @@ cibyl_errno_t alphabeta(cibyl_error_t *err, cb_move_t *bestmove,
         /* Make the move and search recursively. */
         mv = cb_mvlst_at(&mvlst, i);
         cb_make(board, mv);
-        if (searching(err, &eval, eng, board, &state, base_depth - 1) != CIBYL_EOK) {
+        if (searching(err, &eval, eng, board, base_depth - 1) != CIBYL_EOK) {
             result = CIBYL_ERR_ADD_CONTEXT(err);
             goto out;
         }

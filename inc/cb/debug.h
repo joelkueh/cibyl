@@ -27,18 +27,25 @@ void cb_print_board_ascii(FILE *f, cb_board_t *board);
 void cb_print_board_utf8(FILE *f, cb_board_t *board);
 
 /**
+ * @breif Prints a single bitboard
+ * @param f The file pointer to print to.
+ * @param bitboard The bitboard to print.
+ */
+void cb_print_bitboard(FILE *f, uint64_t bitboard);
+
+/**
  * @breif Prints the board with fancy chess characters from the UTF8 set.
  * @param f The file pointer to print to.
  * @param board The board to print.
  */
-void cb_print_bitboard(FILE *f, cb_board_t *board);
+void cb_print_piece_bitboards(FILE *f, cb_board_t *board);
 
 /**
  * @breif Prints specified state tables.
  * @param f The file pointer to print to.
  * @param board The board to print.
  */
-void cb_print_state(FILE *f, cb_state_tables_t *state);
+void cb_print_state(FILE *f, cb_board_t *board);
 
 /**
  * @breif Prints the moves that can be made in the current position.

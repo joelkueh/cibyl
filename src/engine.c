@@ -13,11 +13,12 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <stdlib.h>
-#include <eval.h>
 
+#include "cb/cb.h"
+#include "cb/eval.h"
 #include "engine.h"
 #include "search.h"
-#include "cb/cb.h"
+#include "perft.h"
 
 #define DEFAULT_FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
@@ -45,6 +46,15 @@ cibyl_errno_t eng_start_search(cibyl_error_t *err, engine_t *eng, const search_p
     /* Prepare the engine if anything is not ready. */
     if (eng_prepare(err, eng) != CIBYL_EOK) {
         result = CIBYL_ERR_ADD_CONTEXT(err);
+        goto out;
+    }
+
+    /* Bypass the thinker pool for a perft search. */
+    if (opts->perft) {
+        if (perft_cheat(err, eng->board, opts->depth) != CIBYL_EOK) {
+            result = CIBYL_ERR_ADD_CONTEXT(err);
+            goto out;
+        }
         goto out;
     }
 
@@ -112,7 +122,7 @@ cibyl_errno_t thinker_report_bestmove(cibyl_error_t *err, engine_t *eng, cb_move
 cibyl_errno_t thinker_report_info(cibyl_error_t *err, engine_t *eng)
 {
     /* TODO: Implement me. */
-    printf("Info!\n");
+    printf("info\n");
     return CIBYL_EOK;
 }
 
@@ -209,7 +219,7 @@ cibyl_errno_t eng_set_ucifen(cibyl_error_t *err, engine_t *eng, char *fen)
     }
 
     /* Initialize the board according to the ucifen string. */
-    if (cb_board_from_fen(err, eng->board, fen) != CIBYL_EOK) {
+    if (cb_board_from_uci(err, eng->board, fen) != CIBYL_EOK) {
         CIBYL_ERR_ADD_CONTEXT(err);
         result = CIBYL_EABORT;
         goto out;

@@ -165,8 +165,6 @@ void pesto_init()
     cb_ptype_t ptype = CB_PTYPE_PAWN;
     cb_pid_t pid = CB_PID_WHITE_PAWN;
     int sq;
-
-    for (;
 }
 
 float piece_differential(const cb_board_t *board)

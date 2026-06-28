@@ -1,6 +1,5 @@
 
 #include "cibyl.h"
-#include "eval.h"
 #include "uci.h"
 
 #include <pthread.h>
@@ -21,7 +20,7 @@ int main(int argc, char *argv[])
     args_t args = make_default_args();
 
     /* Set the log file to stderr. */
-    log_file = NULL;
+    log_file = stderr;
     pthread_mutex_init(&log_lock, NULL);
 
     /* Parse arguments. */

@@ -15,40 +15,60 @@
 #ifdef NDEBUG
 #define CIBYL_ERR_ADD_CONTEXT(err) (err)->num
 #else
-#define CIBYL_ERR_ADD_CONTEXT(err) (err)->num; if (err != NULL) { \
+#define CIBYL_ERR_ADD_CONTEXT(err) \
+({ \
+    if (err != NULL) { \
 	snprintf((err)->context + strlen((err)->context), CTX_STRLEN - strlen((err)->context), \
 		"- in %s (%s:%d)\n", __func__, __FILE_NAME__, __LINE__); \
-}
+    } \
+    ((err)->num); \
+})
 #endif
 
 /* Macro to populate an error struct. */
 #ifdef NDEBUG
-#define CIBYL_MKERR(err, errno, format, ...) errno; if (err != NULL) {\
-    (err)->num = errno; \
-    snprintf((err)->desc, DESC_STRLEN, format __VA_OPT__(,) __VA_ARGS__); \
-}
+#define CIBYL_MKERR(err, errnum, format, ...) \
+({ \
+    if (err != NULL) { \
+        (err)->num = errnum; \
+        snprintf((err)->desc, DESC_STRLEN, format __VA_OPT__(,) __VA_ARGS__); \
+    } \
+    (errnum); \
+})
 #else
-#define CIBYL_MKERR(err, errno, format, ...) errno; if (err != NULL) {\
-    (err)->num = errno; \
-    snprintf((err)->desc, DESC_STRLEN, format __VA_OPT__(,) __VA_ARGS__); \
-    (err)->context[0] = '\0'; \
-    CIBYL_ERR_ADD_CONTEXT(err); \
-}
+#define CIBYL_MKERR(err, errnum, format, ...) \
+({ \
+    if (err != NULL) {\
+        (err)->num = errnum; \
+        snprintf((err)->desc, DESC_STRLEN, format __VA_OPT__(,) __VA_ARGS__); \
+        (err)->context[0] = '\0'; \
+        CIBYL_ERR_ADD_CONTEXT(err); \
+    } \
+    (errnum); \
+})
 #endif
 
 /* Macro to write an error struct. */
 #ifdef NDEBUG
-#define CIBYL_WRITE_ERR(err) (err)->num; if (err != NULL) {\
-	CIBYL_ERR_ADD_CONTEXT((err)); \
-	cibyl_write_log("%s\n", (err)->desc); \
-	printf("info string CRITICAL ERROR: %s\n", (err)->desc); \
-}
+#define CIBYL_WRITE_ERR(err) \
+({ \
+    if (err != NULL) { \
+	    CIBYL_ERR_ADD_CONTEXT((err)); \
+	    cibyl_write_log("%s\n", (err)->desc); \
+	    printf("info string CRITICAL ERROR: %s\n", (err)->desc); \
+    } \
+    (err)->num; \
+})
 #else
-#define CIBYL_WRITE_ERR(err) (err)->num; if (err != NULL) {\
-	CIBYL_ERR_ADD_CONTEXT((err)); \
-	cibyl_write_log("%s\n%s\n", (err)->desc, (err)->context); \
-	printf("info string CRITICAL ERROR: %s\n", (err)->desc); \
-}
+#define CIBYL_WRITE_ERR(err) \
+({ \
+    if (err != NULL) { \
+	    CIBYL_ERR_ADD_CONTEXT((err)); \
+	    cibyl_write_log("%s\n%s\n", (err)->desc, (err)->context); \
+	    printf("info string CRITICAL ERROR: %s\n", (err)->desc); \
+    } \
+    ((err)->num);  \
+})
 #endif
 
 /**

@@ -1,11 +1,14 @@
 
-#include "log.h"
+#ifdef WIN32
+#define strtok_r strtok_s
+#endif
 #include <string.h>
-#include <stdio.h>
+
 #include <errno.h>
 #include <threads.h>
 #include <stdatomic.h>
 
+#include "log.h"
 #include "cb/cb.h"
 #include "cb/tables.h"
 #include "cb/const.h"
@@ -18,9 +21,9 @@ int cb_table_refcount = 0;
 void cb_mv_to_uci_algbr(char *buf, cb_move_t move)
 {
     buf[0] = cb_mv_get_from(move) % 8 + 'a';
-    buf[1] = '8' - cb_mv_get_from(move) / 8;
+    buf[1] = '1' + cb_mv_get_from(move) / 8;
     buf[2] = cb_mv_get_to(move) % 8 + 'a';
-    buf[3] = '8' - cb_mv_get_to(move) / 8;
+    buf[3] = '1' + cb_mv_get_to(move) / 8;
 
     switch (cb_mv_get_flags(move)) {
         case CB_MV_KNIGHT_PROMO:
@@ -151,7 +154,7 @@ void cb_make(cb_board_t *board, const cb_move_t mv)
             cb_write_piece(board, rook_to, CB_PTYPE_ROOK, board->turn);
             break;
         case CB_MV_ENPASSANT:
-            direction = board->turn == CB_WHITE ? 8 : -8;
+            direction = board->turn == CB_WHITE ? -8 : 8;
             cb_hist_set_captured_piece(&new_state, CB_PTYPE_PAWN);
             cb_write_piece(board, to, CB_PTYPE_PAWN, board->turn);
             cb_delete_piece(board, from, CB_PTYPE_PAWN, board->turn);
@@ -268,7 +271,7 @@ void cb_unmake(cb_board_t *board)
             cb_delete_piece(board, rook_to, CB_PTYPE_ROOK, board->turn);
             break;
         case CB_MV_ENPASSANT:
-            direction = board->turn ? 8 : -8;
+            direction = board->turn == CB_WHITE ? -8 : 8;
             cb_write_piece(board, from, CB_PTYPE_PAWN, board->turn);
             cb_delete_piece(board, to, CB_PTYPE_PAWN, board->turn);
             cb_write_piece(board, to + direction, CB_PTYPE_PAWN, !board->turn);
@@ -322,12 +325,11 @@ cibyl_errno_t cb_mv_from_short_algbr(cibyl_error_t *err, cb_move_t *mv, cb_board
 cibyl_errno_t cb_mv_from_uci_algbr(cibyl_error_t *err, cb_move_t *mv, cb_board_t *board,
                                 const char *algbr)
 {
-    cibyl_errno_t result;
+    cibyl_errno_t result = CIBYL_EOK;
     uint8_t to, from;
     uint16_t flag;
     cb_move_t temp_mv;
     cb_mvlst_t mvlst;
-    cb_state_tables_t state;
     int i;
 
     /* Make sure that the length of the algebraic string is 4 or 5 characters. */
@@ -338,9 +340,9 @@ cibyl_errno_t cb_mv_from_uci_algbr(cibyl_error_t *err, cb_move_t *mv, cb_board_t
 
     /* Get the information about the move itself. */
     from = algbr[0] - 'a';
-    from += ('8' - algbr[1]) * 8;
+    from += (algbr[1] - '1') * 8;
     to = algbr[2] - 'a';
-    to += ('8' - algbr[3]) * 8;
+    to += (algbr[3] - '1') * 8;
 
     /* Verify that the characters inputted were valid. */
     if (from < 0 || from >= 64 || to < 0 || to >= 64) {
@@ -349,8 +351,7 @@ cibyl_errno_t cb_mv_from_uci_algbr(cibyl_error_t *err, cb_move_t *mv, cb_board_t
     }
 
     /* Find the move in the list of generated moves and return the match. */
-    cb_gen_board_tables(&state, board);
-    cb_gen_moves(&mvlst, board, &state);
+    cb_gen_moves(&mvlst, board);
     *mv = CB_INVALID_MOVE;
     for (i = 0; i < cb_mvlst_size(&mvlst); i++) {
         temp_mv = cb_mvlst_at(&mvlst, i);
@@ -402,8 +403,8 @@ out:
 cibyl_errno_t parse_fen_main(cibyl_error_t *err, cb_board_t *board, char *fen_main)
 {
     cibyl_errno_t result = CIBYL_EOK;
-    uint8_t sq = 0;
-    uint8_t row = 0;
+    uint8_t row = 7;
+    uint8_t sq = row * 8;
     char c;
     int i = 0;
     cb_color_t pcolor;
@@ -447,16 +448,21 @@ cibyl_errno_t parse_fen_main(cibyl_error_t *err, cb_board_t *board, char *fen_ma
                 result = CIBYL_MKERR(err, CIBYL_EINVAL, "encountered '/' before the end of a row");
                 goto out;
             }
-            row += 1;
+            row -= 1;
+            if (row < 0) {
+                result = CIBYL_MKERR(err, CIBYL_EINVAL, "too many rows in fen string");
+                goto out;
+            }
+            sq = row * 8;
         } else {
             /* Any invalid characters return an error. */
-            result = CIBYL_MKERR(err, CIBYL_EINVAL, "invalid character in fen body");
+            result = CIBYL_MKERR(err, CIBYL_EINVAL, "invalid character in fen body: %c", c);
             goto out;
         }
     }
 
     /* Throw errors for the write head not being at the end of the board. */
-    if (sq != 64) {
+    if (row != 0 && sq != 8) {
         result = CIBYL_MKERR(err, CIBYL_EINVAL, "unexpected end to fen body");
         goto out;
     }
@@ -581,12 +587,13 @@ out:
 cibyl_errno_t cb_board_from_fen(cibyl_error_t *err, cb_board_t *board, char *fen)
 {
     cibyl_errno_t result = CIBYL_EOK;
+    char *saveptr;
 
-    char *fen_main = strtok(fen, " \n");
-    char *fen_turn = strtok(NULL, " \n");
-    char *fen_rights = strtok(NULL, " \n");
-    char *fen_enp = strtok(NULL, " \n");
-    char *fen_hlfmv = strtok(NULL, " \n");
+    char *fen_main = strtok_r(fen, " \n", &saveptr);
+    char *fen_turn = strtok_r(NULL, " \n", &saveptr);
+    char *fen_rights = strtok_r(NULL, " \n", &saveptr);
+    char *fen_enp = strtok_r(NULL, " \n", &saveptr);
+    char *fen_hlfmv = strtok_r(NULL, " \n", &saveptr);
 
     /* Reset the board. */
     cb_wipe_board(board);
@@ -625,6 +632,7 @@ out:
 cibyl_errno_t cb_board_from_uci(cibyl_error_t *err, cb_board_t *board, char *uci)
 {
     cibyl_errno_t result = CIBYL_EOK;
+    char *saveptr;
     char *moves;
     char *algbr = NULL;
     cb_move_t mv;
@@ -648,14 +656,14 @@ cibyl_errno_t cb_board_from_uci(cibyl_error_t *err, cb_board_t *board, char *uci
     }
 
     /* Parse the list of moves. */
-    algbr = strtok(moves, " \n");
+    algbr = strtok_r(moves, " \n", &saveptr);
     while (algbr != NULL) {
         if (cb_mv_from_uci_algbr(err, &mv, board, algbr) != 0) {
             result = CIBYL_EOK;
             goto out;
         }
         cb_make(board, mv);
-        algbr = strtok(NULL, " \n");
+        algbr = strtok_r(NULL, " \n", &saveptr);
     }
 
 out:

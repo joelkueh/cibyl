@@ -7,7 +7,8 @@
 #include "log.h"
 
 /**
- * @breif Initializes a board. Note that this does not include move generation initalization.
+ * @breif Initializes a board.
+ * Note that this does not include move generation initalization.
  * @param err A pointer that will be populated with any errors.
  * @param board A pointer to the board to be initialized.
  * @return The error code corresponding to the error in err.
@@ -16,6 +17,9 @@ cibyl_errno_t cb_board_init(cibyl_error_t *err, cb_board_t *board);
 
 /**
  * @breif Initializes the move generation tables for a board.
+ *
+ * This function is thread-safe and all tables are refcounted.
+ *
  * @param err A pointer that will be populated with any errors.
  * @return True if this thread initialized the table, false otherwise.
  */
@@ -28,7 +32,8 @@ cibyl_errno_t cb_tables_init(cibyl_error_t *err);
 void cb_board_free(cb_board_t *board);
 
 /**
- * @breif Frees the board tables. Not protected by a call_once lock.
+ * @breif Decrements the refcount to the move genration tables, freeing them
+ * if the refcount drops to zero.
  */
 void cb_tables_free();
 
@@ -104,19 +109,12 @@ cibyl_errno_t cb_mv_from_uci_algbr(cibyl_error_t *err, cb_move_t *mv, cb_board_t
 void cb_mv_to_uci_algbr(char buf[6], cb_move_t mv);
 
 /**
- * @breif Generates the relevant board tables for a board state.
- * @param state The state table structure to populate.
- * @param board The board in question.
- */
-void cb_gen_board_tables(cb_state_tables_t *state, cb_board_t *board);
-
-/**
  * @breif Generates moves.
  * @param mvlst The movelist structure to populate.
  * @param board The board to generate moves on.
  * @param state The state table to reference for move generation.
  */
-void cb_gen_moves(cb_mvlst_t *mvlst, cb_board_t *board, cb_state_tables_t *state);
+void cb_gen_moves(cb_mvlst_t *mvlst, cb_board_t *board);
 
 /**
  * @breif Reserves space on the history stack to make at least added_depth moves.

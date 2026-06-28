@@ -6,7 +6,7 @@
 #include "cb/tables.h"
 #include "cb/bitutil.h"
 
-const int8_t dir_offset_mapping[8] = { 1, -7, -8, -9, -1, 7, 8, 9 };
+const int8_t dir_offset_mapping[8] = { 1, 9, 8, 7, -1, -9, -8, -7 };
 
 const uint8_t NUM_BISHOP_BITS[64] = {
     6, 5, 5, 5, 5, 5, 5, 6,
@@ -227,14 +227,14 @@ uint64_t get_rook_occ_mask(uint8_t sq)
     int8_t rank;
     int8_t file;
 
-    /* Down */
+    /* Up */
     rank = source_rank + 1;
     while (rank <= 6) {
         result |= UINT64_C(1) << (source_file + rank * 8);
         rank++;
     }
 
-    /* Up */
+    /* Down */
     rank = source_rank - 1;
     while (rank >= 1) {
         result |= UINT64_C(1) << (source_file + rank * 8);
@@ -278,7 +278,7 @@ uint64_t get_bishop_occ_mask(uint8_t sq)
     int8_t rank;
     int8_t file;
 
-    /* Down-Right */
+    /* Up-Right */
     rank = source_rank + 1;
     file = source_file + 1;
     while (rank <= 6 && file <= 6) {
@@ -287,7 +287,7 @@ uint64_t get_bishop_occ_mask(uint8_t sq)
         file++;
     }
 
-    /* Down-Left */
+    /* Up-Left */
     rank = source_rank + 1;
     file = source_file - 1;
     while (rank <= 6 && file >= 1) {
@@ -296,7 +296,7 @@ uint64_t get_bishop_occ_mask(uint8_t sq)
         file--;
     }
 
-    /* Up-Right */
+    /* Down-Right */
     rank = source_rank - 1;
     file = source_file + 1;
     while (rank >= 1 && file <= 6) {
@@ -305,7 +305,7 @@ uint64_t get_bishop_occ_mask(uint8_t sq)
         file++;
     }
 
-    /* Up-Left */
+    /* Down-Left */
     rank = source_rank - 1;
     file = source_file - 1;
     while (rank >= 1 && file >= 1) {
@@ -330,7 +330,7 @@ uint64_t get_rook_atk_mask(uint8_t sq, uint64_t occ)
     int8_t rank;
     int8_t file;
 
-    /* Down */
+    /* Up */
     rank = source_rank + 1;
     while (rank <= 7) {
         result |= UINT64_C(1) << (source_file + rank * 8);
@@ -339,7 +339,7 @@ uint64_t get_rook_atk_mask(uint8_t sq, uint64_t occ)
         rank++;
     }
 
-    /* Up */
+    /* Down */
     rank = source_rank - 1;
     while (rank >= 0) {
         result |= UINT64_C(1) << (source_file + rank * 8);
@@ -382,7 +382,7 @@ uint64_t get_bishop_atk_mask(uint8_t sq, uint64_t occ)
     int8_t rank;
     int8_t file;
 
-    /* Down-Right */
+    /* Up-Right */
     rank = source_rank + 1;
     file = source_file + 1;
     while (rank <= 7 && file <= 7) {
@@ -393,7 +393,7 @@ uint64_t get_bishop_atk_mask(uint8_t sq, uint64_t occ)
         file++;
     }
 
-    /* Down-Left */
+    /* Up-Left */
     rank = source_rank + 1;
     file = source_file - 1;
     while (rank <= 7 && file >= 0) {
@@ -404,7 +404,7 @@ uint64_t get_bishop_atk_mask(uint8_t sq, uint64_t occ)
         file--;
     }
 
-    /* Up-Right */
+    /* Down-Right */
     rank = source_rank - 1;
     file = source_file + 1;
     while (rank >= 0 && file <= 7) {
@@ -415,7 +415,7 @@ uint64_t get_bishop_atk_mask(uint8_t sq, uint64_t occ)
         file++;
     }
 
-    /* Up-Left */
+    /* Down-Left */
     rank = source_rank - 1;
     file = source_file - 1;
     while (rank >= 0 && file >= 0) {

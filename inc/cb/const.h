@@ -32,8 +32,8 @@ extern const uint8_t M_BLACK_KING_SIDE_ROOK_TARGET;
 extern const uint8_t M_BLACK_QUEEN_SIDE_CASTLE_TARGET;
 extern const uint8_t M_BLACK_QUEEN_SIDE_ROOK_TARGET;
 
-extern const uint8_t M_WHITE_MIN_ENPASSANT_TARGET;
-extern const uint8_t M_BLACK_MIN_ENPASSANT_TARGET;
+extern const uint8_t M_WHITE_ENP_LINE_START;
+extern const uint8_t M_BLACK_ENP_LINE_START;
 
 extern const uint64_t BB_RIGHT_COL;
 extern const uint64_t BB_LEFT_COL;

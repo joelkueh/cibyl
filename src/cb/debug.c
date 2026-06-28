@@ -42,12 +42,12 @@ void cb_print_board_ascii(FILE *f, cb_board_t *board)
 
     cb_board_to_str(str_rep, board);
     fprintf(f, "%s\n", SEPERATOR);
-    for (row = 0; row < 8; row++) {
+    for (row = 7; row >= 0; row--) {
         fprintf(f, "%s", PIECE_SEP);
         for (col = 0; col < 8; col++) {
             fprintf(f, "%c%s", str_rep[row][col], PIECE_SEP);
         }
-        fprintf(f, "%d\n", 8 - row);
+        fprintf(f, "%d\n", row + 1);
         fprintf(f, "%s\n", SEPERATOR);
     }
     fprintf(f, "%s\n", FILE_LINE);
@@ -70,7 +70,19 @@ void prep_bb_byte(char *buf, uint64_t bb, uint64_t rank) {
             (bb & (UINT64_C(1) << (rank * 8 + 7))) ? ANSI_COLOR_GREEN "1" : ANSI_COLOR_RED "0");
 }
 
-void cb_print_bitboard(FILE *f, cb_board_t *board)
+void cb_print_bitboard(FILE *f, uint64_t bitboard)
+{
+    char byte[PRINT_BUF_LEN];
+    int i;
+
+    for (i = 7; i >= 0; i--) {
+        prep_bb_byte(byte, bitboard, i);
+        fprintf(f, "%s\n", byte);
+    }
+    fprintf(f, "\n");
+}
+
+void cb_print_piece_bitboards(FILE *f, cb_board_t *board)
 {
     const char *wheaders[] = { "WHITE", "PAWN", "KNIGHT", "BISHOP", "ROOK", "QUEEN", "KING", "OCC" };
     const char *bheaders[] = { "BLACK", "PAWN", "KNIGHT", "BISHOP", "ROOK", "QUEEN", "KING" };
@@ -85,7 +97,7 @@ void cb_print_bitboard(FILE *f, cb_board_t *board)
     for (i = 0; i < 8; i++)
         fprintf(f, "===============  ");
     fprintf(f, "\n");
-    for (i = 0; i < 8; i++) {
+    for (i = 7; i >= 0; i--) {
         prep_bb_byte(byte, board->bb.color[1], i);
         fprintf(f, "%s  ", byte);
         for (j = 0; j < 6; j++) {
@@ -105,7 +117,7 @@ void cb_print_bitboard(FILE *f, cb_board_t *board)
     for (i = 0; i < 7; i++)
         fprintf(f, "===============  ");
     fprintf(f, "\n");
-    for (i = 0; i < 8; i++) {
+    for (i = 7; i >= 0; i--) {
         prep_bb_byte(byte, board->bb.color[0], i);
         fprintf(f, "%s  ", byte);
         for (j = 0; j < 6; j++) {
@@ -117,7 +129,7 @@ void cb_print_bitboard(FILE *f, cb_board_t *board)
     fprintf(f, "\n");
 }
 
-void cb_print_state(FILE *f, cb_state_tables_t *state)
+void cb_print_state(FILE *f, cb_board_t *board)
 {
     const char *headers[] = { "THREATS", "CHECKS", "CHECK_BLOCKS" };
     int i, j;
@@ -128,9 +140,9 @@ void cb_print_state(FILE *f, cb_state_tables_t *state)
     for (i = 0; i < 9; i++)
         fprintf(f, "===============  ");
     fprintf(f, "\n");
-    for (i = 0; i < 8; i++) {
+    for (i = 7; i >= 0; i--) {
         for (j = 0; j < 9; j++) {
-            prep_bb_byte(byte, state->pins[j], i);
+            prep_bb_byte(byte, board->pins[j], i);
             fprintf(f, "%s  ", byte);
         }
         fprintf(f, "\n");
@@ -144,12 +156,12 @@ void cb_print_state(FILE *f, cb_state_tables_t *state)
     for (i = 0; i < 3; i++)
         fprintf(f, "===============  ");
     fprintf(f, "\n");
-    for (i = 0; i < 8; i++) {
-        prep_bb_byte(byte, state->threats, i);
+    for (i = 7; i >= 0; i--) {
+        prep_bb_byte(byte, board->threats, i);
         fprintf(f, "%s  ", byte);
-        prep_bb_byte(byte, state->checks, i);
+        prep_bb_byte(byte, board->checks, i);
         fprintf(f, "%s  ", byte);
-        prep_bb_byte(byte, state->check_blocks, i);
+        prep_bb_byte(byte, board->check_blocks, i);
         fprintf(f, "%s  ", byte);
         fprintf(f, "\n");
     }

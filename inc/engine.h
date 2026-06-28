@@ -52,6 +52,7 @@ typedef struct {
     int64_t movetime;       /**< The amount of time that the bot should think for. */
     bool ponder;            /**< Flag that states if this is a ponder search. */
     bool infinite;          /**< Flag that states if this search should be infinite. */
+    bool perft;             /**< Flag that states if this is a perft search. */
 } search_params_t;
 
 /**

@@ -30,19 +30,16 @@ void gen_table_from_offsets(uint64_t table[64], const int8_t offsets[], uint8_t 
 
         /* Remove all invalid moves.
          * If we are in the right two columns, we cannot jump to the left. */
-        if ((UINT64_C(1) << i) & BB_RIGHT_TWO_COLS) {
+        if ((UINT64_C(1) << i) & BB_RIGHT_TWO_COLS)
             table[i] &= ~BB_LEFT_TWO_COLS;
-        }
-
-        if ((UINT64_C(1) << i) & BB_LEFT_TWO_COLS) {
+        else if ((UINT64_C(1) << i) & BB_LEFT_TWO_COLS)
             table[i] &= ~BB_RIGHT_TWO_COLS;
-        }
     }
 }
 
 void gen_pawn_atk_table()
 {
-    const int8_t OFFSETS[2][8] = {{7, 9}, {-7, -9}};
+    const int8_t OFFSETS[2][8] = {{-7, -9}, {7, 9}};
     gen_table_from_offsets(pawn_atks[0], OFFSETS[0], 2);
     gen_table_from_offsets(pawn_atks[1], OFFSETS[1], 2);
 }
@@ -70,14 +67,22 @@ uint8_t cb_get_ray_direction(uint8_t sq1, uint8_t sq2)
     int8_t sq2_file = sq2 % 8;
     uint8_t direction;
 
-    /* This line is a mess, but it does convert from square and file to ray direction. */
-    direction = (sq1_rank == sq2_rank) ? (sq1 < sq2 ? CB_DIR_R : CB_DIR_L) :
-        (sq1_file == sq2_file) ? (sq1 < sq2 ? CB_DIR_D : CB_DIR_U) :
-        (sq1_file + sq1_rank == sq2_file + sq2_rank) ? (sq1 < sq2 ? CB_DIR_DL : CB_DIR_UR) :
-        (sq1_file - sq1_rank == sq2_file - sq2_rank) ? (sq1 < sq2 ? CB_DIR_DR : CB_DIR_UL) :
-        CB_DIR_INVALID;
-
-    return direction;
+    /* Compute the ray based on the square. */
+    if (sq1_rank == sq2_rank) {
+        /* Slide left and right if the ranks are equal. */
+        return sq1 < sq2 ? CB_DIR_R : CB_DIR_L;
+    } else if (sq1_file == sq2_file) {
+        /* Slide up and down if the files are equal. */
+        return sq1 < sq2 ? CB_DIR_U : CB_DIR_D;
+    } else if (sq1_file + sq1_rank == sq2_file + sq2_rank) {
+        /* UL and DR diagonals have equal Manhattan distance from square A1. */
+        return sq1 < sq2 ? CB_DIR_UL : CB_DIR_DR;
+    } else if (sq1_file - sq1_rank == sq2_file - sq2_rank) {
+        /* Rank - File is equal for all UR and DL diagonals. */
+        return sq1 < sq2 ? CB_DIR_UR : CB_DIR_DL;
+    } else {
+        return CB_DIR_INVALID;
+    }
 }
 
 /**

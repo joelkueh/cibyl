@@ -15,7 +15,7 @@ depth = int(sys.argv[2])
 fish_path = "stockfish"
 script_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.abspath(script_dir + "/..")
-rchess_path = root_dir + "/build/debug"
+rchess_path = root_dir + "/build/cibyl"
 move_regex = r"([a-zA-z][1-8][a-zA-z][1-8][nbrq]?): ([1-9]\d*|0)"
 
 

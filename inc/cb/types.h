@@ -95,16 +95,6 @@ typedef struct {
 } cb_hist_stack_t;
 
 /**
- * @breif State table data structure that is useful in move generation.
- */
-typedef struct {
-    uint64_t threats;       /**< A bitmask for all pieces that threaten the king. */
-    uint64_t checks;        /**< A bitmask for all pieces that check the king. */
-    uint64_t check_blocks;  /**< A bitmask for all squares that can break a check. */
-    uint64_t pins[10];      /**< A set of bitmasks for all active pin rays. */
-} cb_state_tables_t;
-
-/**
  * @breif Bitboard data structure that actually stores peice data.
  *
  * The board squares are counted from the top left of the board (black pieces first) row-wise.
@@ -137,9 +127,15 @@ typedef struct {
  * is useful to move generation and the like.
  */
 typedef struct {
+    cb_hist_stack_t hist;   /**< The history stack. */
     cb_bitboard_t bb;       /**< The bitboard. */
     cb_mailbox_t mb;        /**< The mailbox. */
-    cb_hist_stack_t hist;   /**< The history stack. */
+
+    uint64_t threats;       /**< A bitmask for all pieces that threaten the king. */
+    uint64_t checks;        /**< A bitmask for all pieces that check the king. */
+    uint64_t check_blocks;  /**< A bitmask for all squares that can break a check. */
+    uint64_t pins[10];      /**< A set of bitmasks for all active pin rays. */
+
     uint8_t turn;           /**< The current turn. */
     uint32_t fullmove_num;  /**< The fullmove number. */
 } cb_board_t;

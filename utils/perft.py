@@ -10,7 +10,7 @@ import pexpect
 # Get the path to the debug executable to test.
 script_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.abspath(script_dir + "/..")
-khess_path = root_dir + "/build/debug"
+khess_path = root_dir + "/build/cibyl"
 
 move_regex = r"([a-zA-z][1-8][a-zA-z][1-8][nbrq]?): ([1-9]\d*|0)"
 end_regex = r"Nodes searched: ([1-9]\d*|0)"
@@ -97,6 +97,7 @@ def perform_test(fen, depth, result):
     # Try the perft test.
     engine = pexpect.spawn(khess_path, encoding='utf-8')
     engine.sendline(f'position fen {fen}')
+    print(f'position fen {fen}')
     engine.sendline(f'go perft {depth}')
 
     # Start the progress bar.
@@ -124,12 +125,13 @@ def perform_test(fen, depth, result):
         print("ERROR: NODE SUM DOES NOT MATCH")
         print()
 
-    #for fen, depth, result in zip(POSITIONS, SHORT_DEPTHS, SHORT_RESULTS):
-    #    print()
-    #    print(f"{fen} | {depth} | {result}")
-    #    perform_test(fen, depth, result)
-
-for fen, depth, result in zip(POSITIONS, SHORT_RESULTS, SHORT_RESULTS):
-    print()
-    print(f"{fen} | {depth} | {result}")
-    perform_test(fen, depth, result)
+if full_perft:
+    for fen, depth, result in zip(POSITIONS, FULL_DEPTHS, FULL_RESULTS):
+        print()
+        print(f"{fen} | {depth} | {result}")
+        perform_test(fen, depth, result)
+else:
+    for fen, depth, result in zip(POSITIONS, SHORT_DEPTHS, SHORT_RESULTS):
+        print()
+        print(f"{fen} | {depth} | {result}")
+        perform_test(fen, depth, result)
